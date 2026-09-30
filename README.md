@@ -45,9 +45,24 @@ Tokens are issued for the signed-in user. Disconnecting the plugin revokes them.
 
 ## What the agent can do
 
-Tools are generic: `describe_category`, then `list`, `fetch`, `create`, `update`, `destroy`, `read_action`, and `take_action`. Categories cover contacts, funnels, pages, courses, emails, automations, the store, and the rest of the public API. The bundled skill tells the agent to pick a workspace first and to confirm a page's hosting model before writing one.
+Tools are generic: `describe_category`, then `list`, `fetch`, `create`, `update`, `destroy`, `read_action`, and `take_action`. Categories cover contacts, funnels, pages, courses, emails, automations, the store, and the rest of the public API.
 
-Guides for each area live at [accounts.myclickfunnels.com](https://accounts.myclickfunnels.com/llms.txt). The developer hub is [developers.myclickfunnels.com](https://developers.myclickfunnels.com).
+The developer hub is [developers.myclickfunnels.com](https://developers.myclickfunnels.com).
+
+## Skills
+
+`skills/clickfunnels/` is written in this repo. It tells the agent to pick a workspace first, to confirm a page's hosting model before writing one, and to get approval before overwriting a page that already has content. It also lists the other skills.
+
+Every other directory under `skills/` is a copy of a skill published at [accounts.myclickfunnels.com/skill.md](https://accounts.myclickfunnels.com/skill.md). Don't edit those copies. Change the published skill, then re-sync:
+
+```bash
+node scripts/sync-skills.mjs          # fetch the published skills and rewrite skills/
+node scripts/sync-skills.mjs --check  # exit 1 if skills/ has drifted
+```
+
+The script reads the [Agent Skills index](https://accounts.myclickfunnels.com/.well-known/agent-skills/index.json) and downloads each skill. It checks each file against the digest in the index, then rewrites relative links to absolute `https://accounts.myclickfunnels.com` URLs. It records the published digests in `skills.lock.json` and regenerates the skill list in `skills/clickfunnels/SKILL.md`. It needs Node 18 or later and has no dependencies.
+
+`.github/workflows/sync-skills.yml` runs the check on every pull request and push to `main`. Every Monday, and on manual dispatch, it runs the sync and opens a pull request if anything changed.
 
 ## Logo
 
