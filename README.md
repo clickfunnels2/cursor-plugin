@@ -51,7 +51,7 @@ Guides for each area live at [accounts.myclickfunnels.com](https://accounts.mycl
 
 ## Logo
 
-`assets/logo.svg` is the ClickFunnels mark on a white tile, cropped from the horizontal logo so it stays readable in the marketplace grid.
+`assets/logo.svg` is the current ClickFunnels mark on a white tile, so it stays readable in the marketplace grid.
 
 ## License
 
