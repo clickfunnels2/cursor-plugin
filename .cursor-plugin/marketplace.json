@@ -1,0 +1,23 @@
+{
+  "name": "clickfunnels",
+  "owner": {
+    "name": "ClickFunnels"
+  },
+  "metadata": {
+    "description": "ClickFunnels plugin for Cursor and Grok Bot.",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "clickfunnels",
+      "source": ".",
+      "description": "Build funnels, manage contacts, and run your store in ClickFunnels.",
+      "homepage": "https://developers.myclickfunnels.com",
+      "repository": "https://github.com/clickfunnels2/cursor-plugin",
+      "license": "MIT",
+      "keywords": ["clickfunnels", "funnels", "contacts", "store", "mcp"],
+      "category": "productivity",
+      "logo": "assets/logo.svg"
+    }
+  ]
+}
