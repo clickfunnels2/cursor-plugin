@@ -11,6 +11,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: sync-skills-${{ github.event_name }}
+  cancel-in-progress: false
+
 jobs:
   check:
     if: github.event_name == 'pull_request' || github.event_name == 'push'
@@ -27,21 +31,24 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      pull-requests: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
       - uses: actions/setup-node@v4
         with:
           node-version: 22
       - run: node scripts/sync-skills.mjs
-      - uses: peter-evans/create-pull-request@v7
-        with:
-          branch: sync-skills
-          delete-branch: true
-          commit-message: Sync skills from accounts.myclickfunnels.com
-          title: Sync skills from accounts.myclickfunnels.com
-          body: |
-            `node scripts/sync-skills.mjs` found changes in the skills published at
-            https://accounts.myclickfunnels.com/.well-known/agent-skills/index.json.
-
-            Review the diff under `skills/` and add a CHANGELOG entry before merging.
+      - name: Commit and push to main
+        run: |
+          git add -- skills skills.lock.json
+          if git diff --cached --quiet; then
+            echo "Published skills already match main."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Sync skills from accounts.myclickfunnels.com"
+          git fetch origin main
+          git rebase origin/main
+          git push origin HEAD:main

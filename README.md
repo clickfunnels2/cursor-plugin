@@ -62,7 +62,7 @@ node scripts/sync-skills.mjs --check  # exit 1 if skills/ has drifted
 
 The script reads the [Agent Skills index](https://accounts.myclickfunnels.com/.well-known/agent-skills/index.json) and downloads each skill. It checks each file against the digest in the index, then rewrites relative links to absolute `https://accounts.myclickfunnels.com` URLs. It records the published digests in `skills.lock.json` and regenerates the skill list in `skills/clickfunnels/SKILL.md`. It needs Node 18 or later and has no dependencies.
 
-`.github/workflows/sync-skills.yml` runs the check on every pull request and push to `main`. Every Monday, and on manual dispatch, it runs the sync and opens a pull request if anything changed.
+`.github/workflows/sync-skills.yml` runs the check on every pull request and push to `main`. Every Monday at 06:00 UTC, and when someone runs the workflow by hand, it syncs and pushes straight to `main` if anything changed. A failed download leaves `main` untouched.
 
 ## Logo
 
