@@ -1,0 +1,47 @@
+name: Sync skills
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/sync-skills.mjs --check
+
+  sync:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/sync-skills.mjs
+      - uses: peter-evans/create-pull-request@v7
+        with:
+          branch: sync-skills
+          delete-branch: true
+          commit-message: Sync skills from accounts.myclickfunnels.com
+          title: Sync skills from accounts.myclickfunnels.com
+          body: |
+            `node scripts/sync-skills.mjs` found changes in the skills published at
+            https://accounts.myclickfunnels.com/.well-known/agent-skills/index.json.
+
+            Review the diff under `skills/` and add a CHANGELOG entry before merging.
