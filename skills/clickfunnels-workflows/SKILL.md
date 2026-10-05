@@ -209,11 +209,6 @@ are NOT on the step record; they come from a separate endpoint that answers for 
 GET /api/v2/workflows/steps/{step_id}/stats
 ```
 
-**Closed Beta** - not yet enabled for all workspaces. A workspace without access gets a `403`
-that says so; retrying will not change it. Request access at
-https://developers.myclickfunnels.com/page/code-support. The step record itself and broadcast
-stats need no access.
-
 Every step returns `contacts`. `are_here` is the number of contacts sitting at the step right
 now (runs whose current step is this one) and is the one figure that ignores the timerange.
 `were_here` counts contacts who left the step inside the window, once per pass through it.

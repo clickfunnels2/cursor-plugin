@@ -76,8 +76,8 @@
     {
       "name": "clickfunnels-refine-filters",
       "url": "https://accounts.myclickfunnels.com/.well-known/refine-filters/skill.md",
-      "digest": "sha256:b8eae95537a6b42c3dbe2b85c3f5ad121d3a400dfb1307e61d38d4f2f871d621",
-      "sha256": "51cb9b63efbe69f5bb1d061dc9b4852831716f99646b46892d938280806aa1de"
+      "digest": "sha256:b0be656db7bbc36e21247a0843d016505ee3683146cab18818c984af39f56609",
+      "sha256": "41268899f744eb00c1f2a18e968442b839429fecd2bcd5ccb9ec851deff39f77"
     },
     {
       "name": "clickfunnels-sdk-checkout",
@@ -100,8 +100,8 @@
     {
       "name": "clickfunnels-stats",
       "url": "https://accounts.myclickfunnels.com/.well-known/stats/skill.md",
-      "digest": "sha256:bda936aebc8dd15a8cf050ba66f2b4bbc3c29e828fb34a1fb8966f5bcbd2a744",
-      "sha256": "07026b8023afdeb910e6709ba81da5dad44cc493de82622478481e34cfa61608"
+      "digest": "sha256:7235fc3b538a758d9602cd1897468e2556d878fdeb34e8027db42764e585941c",
+      "sha256": "ea549b096db962924edc7e580e39b17b95ee96643e04871719064782b297ef2f"
     },
     {
       "name": "clickfunnels-subscription-changes",
@@ -112,8 +112,8 @@
     {
       "name": "clickfunnels-workflows",
       "url": "https://accounts.myclickfunnels.com/.well-known/workflows/skill.md",
-      "digest": "sha256:f3c7194e0cabc7ec4a8c58cc0d4f1eaa8c7809b5d4bc42ccd9fbd6fc18c59615",
-      "sha256": "fcfc6b665d2acd0084678373a715ba7146f39d8975473460d9da07d4fc9615ea"
+      "digest": "sha256:b2c072b194edb2aad69c5311441c7743d6290574168245bef93cac21148f830c",
+      "sha256": "be4104ffd35012fee97744069e4c9a2516207c84924dfcea2a3fe6413a558648"
     }
   ]
 }

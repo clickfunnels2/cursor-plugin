@@ -52,7 +52,7 @@ differ, because a broadcast has a fixed audience and a workflow step does not:
 
 | | Broadcast | Workflow step |
 |---|---|---|
-| Endpoint | `GET /api/v2/emails/broadcasts/{broadcast_id}/stats` | `GET /api/v2/workflows/steps/{step_id}/stats` (Closed Beta - `403` for a workspace without access; request it at https://developers.myclickfunnels.com/page/code-support) |
+| Endpoint | `GET /api/v2/emails/broadcasts/{broadcast_id}/stats` | `GET /api/v2/workflows/steps/{step_id}/stats` |
 | Where the blocks live | `performance`, `revenue` | `email.performance`, `email.revenue` (`email` is `null` for a step that sends no email) |
 | Delivery counters | `progress.sent`, `performance.delivered` | `email.performance.sends`, `recipients`, `failed` |
 | Rate denominator | the broadcast's recorded audience | `recipients` (distinct contacts sent to inside the window) |
@@ -228,10 +228,6 @@ Stats are computed from the page's associated funnel step. If the page is not pa
 
 ## Record stats: counts, breakdowns and totals
 
-**Closed Beta** - not yet enabled for all workspaces. Request access at
-https://developers.myclickfunnels.com/page/code-support. Performance stats for funnels and
-pages (above) are generally available and unaffected.
-
 One endpoint answers "how many", "what is the breakdown" and "what is the total" for
 every analyzable resource. Name the resource, then request the statistics you want as
 flags.
@@ -365,12 +361,6 @@ table scan.
 A filter that takes too long to evaluate returns a 422 saying so. That is
 deterministic rather than transient: retrying it unchanged fails identically. Narrow
 it, or ask for a `count` rather than records.
-
-Because record stats are in Closed Beta, a workspace that does not have access answers
-`403` saying so. That is not retryable and not a scope problem: the message names the
-alternatives that need no access, and the Refine Filters skill covers them (ask a filter for
-`results` with `count: true`, or page the resource's own list). Performance stats for a funnel
-or page are unaffected.
 
 The 503 that mentions the request budget is the opposite case, and the two must not be
 confused. It means the REQUEST's wall clock ran out before the filter got a fair slice,
