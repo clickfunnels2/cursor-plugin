@@ -22,8 +22,8 @@
     {
       "name": "clickfunnels-emails",
       "url": "https://accounts.myclickfunnels.com/.well-known/emails/skill.md",
-      "digest": "sha256:cb43324791418d3362b588072af93a1e1282812d9cad6c107f39ebcd595d4d81",
-      "sha256": "6d70eab2290c3732cd6670990c48581750f8f566a30c46fbebcb1a67694b7a36"
+      "digest": "sha256:c9d910b00c3cd7108b1f46a3a3cb9febdcca5f8fe6fe40036c3dd9c1bc9e033d",
+      "sha256": "5ba343044d98ad1cb57d8be554d5731e47a353c693e0e1e65ca81b356c144ed3"
     },
     {
       "name": "clickfunnels-external-purchases",
@@ -34,8 +34,8 @@
     {
       "name": "clickfunnels-funnels",
       "url": "https://accounts.myclickfunnels.com/.well-known/funnels/skill.md",
-      "digest": "sha256:4316140d090c12895f0d389d5b3cce54a3ff2b859d7b98417cdbf489ee0a129b",
-      "sha256": "c7dabe35013f6153ab1a5f1eed1f34567726c94f408514b0f32fcef52bdd6f55"
+      "digest": "sha256:c05cc90d909dd81ffb897d0b978ce325f8bcfd235c0901b682c02385e21031f1",
+      "sha256": "497f300120daf7dc941f695e4094f5b4f90df09a10227e578bc7fceab837a650"
     },
     {
       "name": "clickfunnels-import-external-blog-post",
@@ -58,14 +58,14 @@
     {
       "name": "clickfunnels-page-markup",
       "url": "https://accounts.myclickfunnels.com/.well-known/page-markup/skill.md",
-      "digest": "sha256:2d3176f2e502a2b951d2612808d15d8d0769f8416c862484127462f0afe87044",
-      "sha256": "3f61a7b174eb2130a4eff5d755dd0f125b3852a3586226ef1e536ad349c28296"
+      "digest": "sha256:0e029841fe7dbd7f1638999f0d26600c5cb583162c06ac1a00bca8256130c66b",
+      "sha256": "b11b73559ddb91020129ee78fae4388356a2b0fe807ec70b98342b4e5bd9da4b"
     },
     {
       "name": "clickfunnels-pages",
       "url": "https://accounts.myclickfunnels.com/.well-known/pages/skill.md",
-      "digest": "sha256:682e869a8d80180e232c7d660733346da7414d291e8166984a5f077e8a454f95",
-      "sha256": "d863440816b4fdbbc562ea6bd2ed69491d36c3293f6ca4cbe08b7d00415ccc43"
+      "digest": "sha256:edcbb22a33debbb6d565ad26f22ba25ed230e0792cea1562c8b5337cd7e5d120",
+      "sha256": "e82e4e0b4e48aab1af0676b9a70a084e54bd82c17bf5600af49b8fee59b339ef"
     },
     {
       "name": "clickfunnels-products",

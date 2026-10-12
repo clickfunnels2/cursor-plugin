@@ -21,7 +21,7 @@ references:
 
 # ClickFunnels Pages Skill
 
-The HTTP surface for creating and updating CF2 pages. The body of every page is
+The HTTP surface for creating and updating CF2 pages. Internal page content is
 authored in **PML (Page Markup Language)** - for the DSL itself (elements,
 attributes, design system), see the
 [Page Markup Skill](https://accounts.myclickfunnels.com/.well-known/page-markup/skill.md). This document covers the
@@ -35,6 +35,7 @@ checkout-products attachment shape.
 - Replacing or extending an existing page's content programmatically
 - Attaching or removing products from a checkout page
 - Building multi-page funnels via the API (one page per call, then compose with the [Funnels Skill](https://accounts.myclickfunnels.com/.well-known/funnels/skill.md))
+- Saving live page content and reading it back
 
 ## Authentication
 
@@ -53,6 +54,69 @@ scope=read write delete
 ```
 
 Store the `access_token` from the response. It is long-lived.
+
+## Saving live page content
+
+There is currently no separate page publish or publish-status operation in the
+public API. `PUT /api/v2/pages/:id` or `PATCH /api/v2/pages/:id` saves supported
+page content as live content. Use `GET /api/v2/pages/:id` to read it back;
+the page's returned `url` is a computed address, not proof that the public
+page is reachable or that cache invalidation has finished.
+
+The API reference calls these HTTP operations
+[`updatePages`](https://developers.myclickfunnels.com/reference/updatepages)
+and [`getPages`](https://developers.myclickfunnels.com/reference/getpages).
+These names are OpenAPI operation IDs; make the HTTP requests shown below.
+
+For an internal page, send `markup` only when creating a disposable page or
+when the person has explicitly approved replacing that page's content. A read
+with `expand[]=markup` is lossy and is never a safe way to copy an existing
+editor page back into an update. This write is not a saved-draft promotion and
+does not promise to delete an older draft blob.
+
+```http
+GET /api/v2/pages/63
+Authorization: Bearer <access_token>
+
+PUT /api/v2/pages/63
+Authorization: Bearer <access_token>
+Content-Type: application/json
+
+{"page":{"markup":"<section><row cols=\"1\"><column><headline>Hi</headline></column></row></section>"}}
+
+GET /api/v2/pages/63
+Authorization: Bearer <access_token>
+```
+
+`PUT` and `PATCH` use the same existing update operation and the `page` JSON
+root. The path accepts a numeric `id` or that page's opaque `public_id`; the
+response uses a numeric `id`, a string `public_id`, and the normal unwrapped
+Page resource. Add `expand[]=markup` only when you need the lossy PML read.
+Both reads and writes require access to the workspace and page; restricted
+tokens need funnels read or write scope respectively.
+
+The existing 401, 403, 404, 400, and 422 errors retain their English `error`
+and nullable `hint` fields; malformed JSON or PML is a 400, while a field for
+the wrong page type is a 422.
+
+The hosting model determines what the write does:
+
+- Internal `page`: `markup` replaces the live visual tree. The editor reads
+  live content first when present; this does not promote a saved draft.
+- `custom_html_page`: `custom_html` replaces the ClickFunnels-hosted HTML body.
+  Read it with `GET /api/v2/pages/:id/custom_html` or MCP's `html` action.
+- External SDK page: deploy the content on your own host. Updating
+  `external_url` changes its ClickFunnels registration, not the hosted body.
+
+Writes request the existing cache invalidation. Read back the resource and
+check its URL separately when public delivery matters. There is currently no
+atomic release of every page in a funnel. The funnel's `live_mode` is for payment
+processing, not page visibility; see the [Funnels Skill](https://accounts.myclickfunnels.com/.well-known/funnels/skill.md#payment-mode-and-page-content).
+
+For MCP, call `describe_category("funnels")` and use `fetch` or `update` on
+`page`, `custom_html_page`, or `external_page` with a granted `workspace_id`,
+record `id`, and flat `attributes` on updates. The connector supplies the
+HTTP `page` root.
 
 ## Reading Current Markup
 
@@ -130,10 +194,10 @@ a 400 response without persisting any state. For the parser error shapes, see
 
 ### Apply markup to an existing page
 
-**STOP before you send this.** A `markup` write replaces the page's entire tree,
-published version and editor draft alike, and PML covers only a subset of what
-the ClickFunnels editor can build. If this page could have been created or edited
-in the editor, ask the person for explicit approval first and tell them
+**STOP before you send this.** A `markup` write replaces live page content, and
+PML covers only a subset of what the ClickFunnels editor can build. If this
+page could have been created or edited in the editor, ask the person for
+explicit approval first and tell them
 editor-only content will not survive. "Update the page" is not that approval.
 The full rule, including the cases where you do not need to ask, is in
 [STOP: get approval before overwriting an existing page](https://accounts.myclickfunnels.com/.well-known/page-markup/skill.md#stop-get-approval-before-overwriting-an-existing-page).

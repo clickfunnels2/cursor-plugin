@@ -213,7 +213,7 @@ These are the DSL parser errors returned at validate time. HTTP-level errors
     bgprompt        AI-generated background - describe in plain English
                     e.g. bgprompt="dark geometric grid pattern, subtle blue glow"
     padding         "vertical horizontal" px. Default "80 20". Single value = all sides.
-    padding-mobile  Same format, applies at <=700px. Default "56 16"
+    padding-mobile  Same format, applies at <=770px. Default "56 16"
     shadow          sm | md | lg
     radius          sm(4px) | md(8px) | lg(16px) | xl(24px)
     border          thin | medium | thick
@@ -287,13 +287,14 @@ These are the DSL parser errors returned at validate time. HTTP-level errors
     size        xl(48px) | l(40px) | m(32px) | s(24px)
     fontsize    Custom size, overrides preset. Must include unit: "72px" "5rem" "100px"
     align       left | center | right
+    align-mobile  left | center | right, at the mobile breakpoint (≤770px)
     color       #hex only (no rgba, no named colors)
     font        Google Font name (see full list below)
     weight      thin|light|normal|medium|semibold|bold|extrabold|black
     transform   uppercase | lowercase | capitalize
     leading     tight | snug | normal | relaxed | loose
     spacing     tight | normal | wide | wider | widest
-    margintop   px spacing above this element
+    margintop   spacing above this element: px (a number) or %; rem/em are converted to px
     margintop-mobile
     id
 
@@ -368,6 +369,7 @@ These are the DSL parser errors returned at validate time. HTTP-level errors
     <i>italic</i>
     <span color="#f59e0b">colored text</span>
     <span bg="#fef3c7" color="#92400e">highlighted</span>
+    <a href="https://example.com/terms" target="_blank">a link</a>
     Line One<br/>Line Two
 
 ### Text encoding (non-ASCII characters)
@@ -418,9 +420,9 @@ These are the DSL parser errors returned at validate time. HTTP-level errors
 ### <divider>
 
   Horizontal rule / spacing element.
-  Attributes: color, padding (vertical space px), width ("50%"/"100%"), align
+  Attributes: color, thickness (line px, default 1), padding (vertical space px), width ("50%"/"100%"), align
 
-  <divider color="#1e293b" padding="40" width="100%"/>
+  <divider color="#1e293b" thickness="2" padding="40" width="100%"/>
 
 
 ================================================================================
@@ -514,8 +516,8 @@ These are the DSL parser errors returned at validate time. HTTP-level errors
   Attributes:
     type          countdown | evergreen
     date          "YYYY-MM-DD" (countdown type)
-    time          "HH:MM:SS" (countdown type)
-    timezone      e.g. "America/New_York"
+    time          "HH:00:00" or "HH:30:00", 24-hour (countdown type; the editor offers half hours)
+    timezone      America/New_York | America/Chicago | America/Denver | America/Los_Angeles | Asia/Tokyo
     bg            Background color
     padding       px (vertical)
     paddinglr     px (left/right)
@@ -529,7 +531,7 @@ These are the DSL parser errors returned at validate time. HTTP-level errors
     labelsize     px
     labelweight
 
-  <countdown type="countdown" date="2026-03-31" time="23:59:59"
+  <countdown type="countdown" date="2026-03-31" time="23:30:00"
              bg="#0f172a" radius="md" padding="20"
              numbercolor="#f59e0b" numberfont="Poppins" numbersize="48" numberweight="black"
              labelcolor="#64748b" labelsize="14"/>

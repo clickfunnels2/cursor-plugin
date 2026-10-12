@@ -613,6 +613,12 @@ Returns **201 Created** with the send action; it runs asynchronously, so fetch i
 at `GET /api/v2/emails/broadcasts/send_actions/{id}` for `started_at`/`completed_at`.
 `DELETE /api/v2/emails/broadcasts/send_actions/{id}` cancels a scheduled send.
 
+To hear when a send finishes instead of polling, subscribe a V2 webhook endpoint
+(`POST /api/v2/workspaces/{workspace_id}/webhooks/outgoing/endpoints`) to
+`emails/broadcast.completed`. The other broadcast events are `created`,
+`updated`, `deleted` and `scheduled`. Each event's `data` is the broadcast as
+`GET /api/v2/emails/broadcasts/{id}` returns it.
+
 ### Split tests and results
 
 A broadcast can be a subject-line split test. On read, every broadcast carries

@@ -1,11 +1,13 @@
 ---
 name: clickfunnels-funnels
 description: >
-  Build and modify funnel workflows programmatically - split tests, conditional
-  splits, branch positioning, multi-page branches, and stored-filter wiring.
-  Use this skill when you need to add A/B testing or audience-based routing to
-  a funnel via the public API.
-version: "1.0"
+  Update funnel settings and build funnel workflows programmatically - paths,
+  favicons, tags, split tests, conditional splits, branch positioning,
+  multi-page branches and stored-filter wiring. Use this skill when you need to
+  change a funnel's settings, routing, or lifecycle through the public API;
+  duplicate, archive, restore, or remove a funnel; or manage branded short links
+  and read their click counts.
+version: "1.2"
 author: ClickFunnels
 tools:
   - http
@@ -22,17 +24,24 @@ references:
 
 # ClickFunnels Funnels Skill
 
-A discovery hub for the funnel workflow APIs - split tests and conditional
-splits - and how they wire together with stored filters and pages.
+A guide to funnel settings, workflows, and lifecycle: edit a funnel's path, favicon,
+domain, tags and code, then build split tests and conditional splits around its pages.
+Duplicate, archive, restore, or delete unused funnels. Also covers branded short
+links and their click statistics.
 
 ## When to use this skill
 
+- Change an existing funnel's URL path, favicon, domain, tags, or custom code.
+- Create branded campaign links, check path availability, and read click counts.
 - Wrap an existing page in an A/B split test (variant page swap, weight tuning).
 - Insert a conditional split that routes contacts down a "matched" or
   "unmatched" branch based on a stored filter.
 - Grow a branch with multiple sequential pages (Welcome -> Onboarding -> CTA).
 - Position a split between specific steps of a funnel using `show_page_step_id`.
 - Read back the resulting tree (with the filter inline via `expand[]=filter`).
+- Archive or restore a funnel and its attached pages, or delete an unused funnel shell.
+- Check page content and the funnel's payment mode without confusing the two.
+- Make an independent same-workspace copy of a funnel and poll its progress.
 
 ## Authentication
 
@@ -40,13 +49,68 @@ OAuth2 password grant using an OAuth application's credentials. See the
 [Refine Filters Skill](https://accounts.myclickfunnels.com/.well-known/refine-filters/skill.md#authentication) for
 details - the same access token is used here.
 
-Reads (including `/structure`) and writes are available to any token authorized for
-the workspace.
+The token must be authorized for the workspace. Category-restricted tokens need
+`funnels:read` for reads (including `/structure` and clone-action polling) and
+`funnels:write` for lifecycle calls and starting a duplication. Restoring archived
+products also requires Store write access. Deleting a funnel that has attached
+workflow triggers also requires Workflows write access.
+
+## Payment mode and page content
+
+The funnel's `live_mode` controls payment processing: `false` is test mode,
+while `true` enables live payments. Changing it does not publish pages. Page
+content is saved live through the existing Pages API, one page write at a
+time. See [Saving live page content](https://accounts.myclickfunnels.com/.well-known/pages/skill.md#saving-live-page-content)
+for the internal, custom HTML, and external SDK hosting paths and the approval
+guardrail for replacing editor content.
+
+Use `GET /api/v2/funnels/:id` to inspect payment mode and
+`PUT /api/v2/funnels/:id` or `PATCH /api/v2/funnels/:id` to change it. The API
+reference calls these HTTP operations
+[`getFunnels`](https://developers.myclickfunnels.com/reference/getfunnels)
+and [`updateFunnels`](https://developers.myclickfunnels.com/reference/updatefunnels);
+these names are OpenAPI operation IDs.
+
+```http
+GET /api/v2/funnels/5
+Authorization: Bearer <access_token>
+
+PUT /api/v2/funnels/5
+Authorization: Bearer <access_token>
+Content-Type: application/json
+
+{"funnel":{"live_mode":false}}
+
+GET /api/v2/funnels/5
+Authorization: Bearer <access_token>
+```
+
+`PUT` and `PATCH` use the existing update operation with the `funnel` JSON
+root. The path accepts a numeric `id` or its opaque `public_id`. The unwrapped
+Funnel response returns `live_mode`, not publication status. Boolean values
+and the strings `"true"` and `"false"` assign that mode; null, empty, and
+other values leave it unchanged. Enable live payments only when the operator
+asks for them. A valid repeated assignment is still only a mode update.
+
+Read page resources back with `GET /api/v2/pages/:id` to see their computed
+URLs, and use the existing funnel structure endpoint to inspect the step tree. Do not
+construct URLs by joining paths or treat a returned URL or a successful write
+as proof of public delivery. There is currently no atomic whole-funnel release
+or pollable publish receipt. For restricted tokens, reads need funnels read
+scope and writes need funnels write scope, alongside workspace and record
+access. MCP clients use `describe_category("funnels")`, then `fetch` or
+`update` on `funnel` and the matching page resource with a granted
+`workspace_id`, record `id`, and flat `attributes` on updates.
 
 ## Endpoint reference
 
 | Action                    | Method | Path                                                                |
 |---------------------------|--------|---------------------------------------------------------------------|
+| Fetch funnel              | GET    | `/api/v2/funnels/:id`                                               |
+| Update funnel settings    | PUT/PATCH | `/api/v2/funnels/:id`                                            |
+| Archive funnel            | POST   | `/api/v2/funnels/:id/archive`                                       |
+| Restore funnel            | POST   | `/api/v2/funnels/:id/unarchive`                                     |
+| Delete empty funnel       | DELETE | `/api/v2/funnels/:id`                                               |
 | List split tests          | GET    | `/api/v2/funnels/:funnel_id/split_test_steps`                        |
 | Create split test         | POST   | `/api/v2/funnels/:funnel_id/split_test_steps`                        |
 | Show split test           | GET    | `/api/v2/funnels/:funnel_id/split_test_steps/:id`                    |
@@ -57,6 +121,100 @@ the workspace.
 | Show conditional split    | GET    | `/api/v2/funnels/:funnel_id/conditional_split_steps/:id`             |
 | Update conditional split  | PATCH  | `/api/v2/funnels/:funnel_id/conditional_split_steps/:id`             |
 | Destroy conditional split | DELETE | `/api/v2/funnels/:funnel_id/conditional_split_steps/:id?branch=...`   |
+| Duplicate funnel          | POST   | `/api/v2/funnels/:funnel_id/clone_actions`                           |
+| Poll funnel duplication   | GET    | `/api/v2/funnels/clone_actions/:id`                                  |
+| List funnel duplications  | GET    | `/api/v2/funnels/:funnel_id/clone_actions`                           |
+
+## Funnel lifecycle
+
+Archive a funnel when you want to retire a populated funnel without removing its
+workflow. `POST /api/v2/funnels/:id/archive` has no request body. It archives the
+funnel and its attached pages, changes the funnel's `current_path` to a unique
+path, and unlinks redirect steps targeting it. A shared funnel cannot be archived.
+Archived funnels remain available through funnel list and fetch calls.
+
+```http
+POST /api/v2/funnels/123/archive
+Authorization: Bearer <access_token>
+```
+
+Restore it with a bodyless `POST /api/v2/funnels/:id/unarchive`. The funnel and
+attached pages become active again, but the old path and redirect links do not
+return. If the funnel has attached pages, archived products are queued for
+restoration after the call commits; check their state separately if your next
+step depends on them. When archived products will be submitted for restoration,
+the token needs Store write access as well as Funnels write access. Funnels write
+alone suffices when there are no archived products to restore. A workspace funnel
+limit can prevent restoration.
+
+```http
+POST /api/v2/funnels/123/unarchive
+Authorization: Bearer <access_token>
+```
+
+Both calls return HTTP 200 with the full funnel representation. You can pass
+the numeric `id` or opaque `public_id`, and request the existing optional
+`expand[]` fields. A repeated archive or restore returns 409; validation
+failure returns 422.
+
+To remove an unused funnel shell, call `DELETE /api/v2/funnels/:id`. This works
+for active or archived funnels only when they are unshared and their workflow
+has no steps beyond its generated root. It returns 204 with no body. A populated
+funnel returns 409; archive it instead. The workflow and generated root step
+remain after deletion. The funnel's attached workflow triggers are deleted by
+the existing destroy cascade, so a trigger-bearing funnel requires both Funnels
+write and Workflows write access. Funnels write alone is sufficient when the
+funnel has no attached triggers.
+
+```http
+DELETE /api/v2/funnels/123
+Authorization: Bearer <access_token>
+```
+
+## Funnel settings
+
+Use `PUT` or `PATCH /api/v2/funnels/:id` with a `funnel` object. The `:id` can
+be the numeric id or public id returned by the API. Funnel creation already
+accepts `current_path`; this update also accepts it and adds
+`favicon_image_id`. Send `current_path`, not `path`.
+The update returns the saved funnel, and `GET /api/v2/funnels/:id` reads it back.
+
+```http
+PUT /api/v2/funnels/123?expand[]=head_code
+Authorization: Bearer <access_token>
+Content-Type: application/json
+
+{
+  "funnel": {
+    "name": "Autumn offer",
+    "current_path": "/autumn-offer",
+    "favicon_image_id": 73,
+    "domain_id": 42,
+    "tag_ids": [9],
+    "head_code": "<meta name=\"campaign\" content=\"autumn\">",
+    "head_code_mode": "replace"
+  }
+}
+```
+
+The path is normalized to lowercase with a leading slash and no trailing slash.
+Blank, root, reserved and occupied paths return 422, including a path held by
+another resource's historical redirect. You can reuse this funnel's own former
+path. A path edit is unavailable while a domain change is propagating. A domain
+change may still be propagating after the update returns 200; read the funnel
+again before relying on the final URL.
+
+The favicon must be an image id from this funnel's workspace. Send `null` to
+clear it. `tag_ids` replaces the tag set; `[]` clears it, while `null` leaves it
+alone. Image, tag and domain ids must belong to the funnel's workspace. Code
+fields append by default, so use `head_code_mode: "replace"` or
+`footer_code_mode: "replace"` for repeatable updates; `null` clears a code field.
+Add `expand[]=head_code` or `expand[]=footer_code` when reading code, since those
+fields are otherwise omitted from the response.
+
+With MCP, call `describe_category` for `funnels`, then the generic `update` tool
+with `resource: "funnel"`, the granted workspace's public id, the funnel id and
+flat `attributes` such as `current_path` and `favicon_image_id`.
 
 ## Split test steps
 
@@ -356,6 +514,67 @@ Branch and variant `steps` arrays are flattened the same way (no nested
 container wrappers). `page.external` and `page.sdk_token` are always present
 on show-page nodes; `sdk_token` is `null` unless `external: true`.
 
+## Duplicate a funnel
+
+Start a same-workspace copy with a bodyless POST. The response is a durable
+receipt, not the new funnel:
+
+```http
+POST /api/v2/funnels/123/clone_actions
+Authorization: Bearer <access_token>
+```
+
+```json
+{
+  "id": 456,
+  "public_id": "LmNpQr",
+  "workspace_id": 12,
+  "funnel_id": 123,
+  "status": "queued",
+  "cloned_funnel_id": null,
+  "error_code": null
+}
+```
+
+Send no JSON attributes. Name, path, site, domain, mode, and scheduling cannot
+be overridden. Every POST is an explicit new copy attempt and returns a new
+receipt.
+
+Poll the receipt by numeric or public ID:
+
+```http
+GET /api/v2/funnels/clone_actions/LmNpQr
+Authorization: Bearer <access_token>
+```
+
+Continue while `status` is `queued` or `processing`. On `completed`, fetch
+`cloned_funnel_id` through `GET /api/v2/funnels/:id`. On `failed`, inspect the
+`error_code`, which is `clone_failed` after background retries are exhausted.
+Polling never restarts work. To recover earlier receipts, list them with
+`GET /api/v2/funnels/:funnel_id/clone_actions`; follow `Pagination-Next` using
+the `after` query parameter when there are more results.
+
+The new funnel stays on the source site and domain, receives a generated
+localized name and path, starts in test mode, and has a disabled workflow.
+Pages and steps are independent copies, including a fresh token for every
+custom HTML page. Product and automation links remain attached. Tags, history,
+and share links are not copied. External SDK pages are unsupported.
+
+MCP clients use the same flow:
+
+```text
+take_action(resource: "funnel", action: "clone", id: "123", workspace_id: "12")
+list(resource: "funnel_clone_action", parent_id: "123", workspace_id: "12")
+fetch(resource: "funnel_clone_action", id: "LmNpQr", workspace_id: "12")
+fetch(resource: "funnel", id: "789", workspace_id: "12")
+```
+
+A 409 means the source has a domain change in progress. Archived funnels,
+missing workflows, external pages, or a missing source-team membership return
+422 before the action is accepted. A read-only token can poll but cannot start
+a copy. A token without access to the source workspace cannot create or read
+its receipts.
+
 ## Common errors
 
 | Error | Cause | Fix |
@@ -366,4 +585,111 @@ on show-page nodes; `sdk_token` is `null` unless `external: true`.
 | 422 "conditional_split_step.branches[i].page_id is already used by another funnel step" | Page already wrapped in a `ShowPageStep` | Use a fresh page. |
 | 400 "conditional_split_step.branches[i] must provide either page_id or page_ids, not both" | Mixed shapes per entry | Pick one. |
 | 404 "Not found" | Funnel / step id does not belong to this workspace's accessible scope | Verify the funnel id and access token. |
+| 403 "write access to Store" | Restoring the funnel would also submit archived products for restoration | Reconnect or use a token with Store write access. |
+| 403 "write access to Workflows" | Deleting the funnel would also delete attached workflow triggers | Reconnect or use a token with Workflows write access. |
 | 401 "API key missing or invalid" | Missing, revoked, or wrong token | Re-authenticate. |
+
+## Branded short links
+
+Manage redirect links independently from funnel pages. Use the existing generic
+MCP tools with `resource: "short_link"` in category `funnels`: `list`, `fetch`,
+`create`, `update`, and `destroy`. Use `read_action` with `action: "availability"`
+or `action: "stats"`; both actions are read-only. A selected workspace, its grant,
+and the corresponding `funnels:read` or `funnels:write` scope are required for
+scoped tokens. The same authorization rules apply through HTTP.
+
+| Action | Method | Path |
+|--------|--------|------|
+| List | GET | `/api/v2/workspaces/:workspace_id/url_redirects` |
+| Create | POST | `/api/v2/workspaces/:workspace_id/url_redirects` |
+| Fetch | GET | `/api/v2/url_redirects/:id` |
+| Update | PATCH | `/api/v2/url_redirects/:id` |
+| Delete | DELETE | `/api/v2/url_redirects/:id` |
+| Check availability | GET | `/api/v2/workspaces/:workspace_id/url_redirects/availability` |
+| Click statistics | GET | `/api/v2/url_redirects/:url_redirect_id/stats` |
+
+### Create and maintain a campaign link
+
+1. Choose a ready-for-use domain belonging to the workspace. `domain_id` accepts
+   its numeric or public ID; `null` or `0` selects the default-site domain.
+2. Check availability with `current_path=/launch` and the chosen `domain_id`.
+   A `200` response contains `status` (`available` or `unavailable`), normalized
+   `current_path`, and the effective numeric `domain_id`. This reserves nothing.
+3. Create with a `url_redirect` body. `original_url` is required on create.
+
+```http
+POST /api/v2/workspaces/123/url_redirects
+Authorization: Bearer <access_token>
+Content-Type: application/json
+
+{"url_redirect":{"original_url":"https://example.com/offer","current_path":"/launch","domain_id":7,"utm_source":"newsletter"}}
+```
+
+A successful create returns `201`, a `Location` header and the flat resource.
+Repeated POST requests create separate records. Lists use the standard V2 page
+size (20). Use `sort_property`, `sort_order` and `after`; follow the `Pagination-Next` or `Link`
+response header for the next cursor. Fetch the resource before deciding to create
+another link; there is no idempotency key on this endpoint.
+
+Writes accept only `name`, `original_url`, `second_url`, `split_percentage`,
+`pixel_code`, `utm_source`, `utm_medium`, `utm_campaign`, `utm_term`, `utm_content`,
+`current_path`, `domain_id`, and `redirect_type`. `split_percentage` is 0-100.
+`redirect_type` is `temporary` (302, default) or `permanent` (301). Omitted update
+fields retain their values. Omitted `pixel_code` on create, or an explicit `null`,
+becomes an empty string. `workspace_id`, `url_id`, and `site_id` cannot be written.
+
+An explicit nonblank path must be available after normalization. Another
+resource's current path or historical alias, or an occupied custom-domain root,
+returns `422` without modifying either resource. The dashboard permits some alias
+reuse and homepage takeover; the API deliberately rejects these cases. A free
+custom-domain root is allowed; the default-site root is invalid. The current path
+or a historical alias owned by this same link is allowed. When checking an
+existing link, pass its `url_redirect_id` to availability and explicitly choose
+its domain; omitted `domain_id` checks the default-site domain.
+
+Omit or leave `current_path` blank on create to generate a path. Omit it on update
+to retain the path, or send it blank to generate a new one. Generated paths retain
+automatic disambiguation. Path changes retain historical aliases. Deleting a link
+removes all its URLs, returns `204`, and a repeated delete returns `404`.
+
+The response contains `id`, `public_id`, `workspace_id`, `domain_id`, every writable
+field, `full_url`, `created_at`, and `updated_at`. Share the returned canonical
+`full_url`. Domain changes propagate asynchronously, so it can still show the
+previous domain until that propagation completes; fetch again to observe it.
+When changing `domain_id` with `current_path` omitted, the retained path must be
+free or owned by this link on the new domain; otherwise the update returns `422`
+without scheduling propagation. An explicitly blank or null `current_path` still
+generates a path.
+Ownership is checked again during propagation. If another resource claims the
+destination before it runs, the previous canonical URL remains in place; choose
+a free `current_path` instead of taking that resource's URL.
+CRUD responses do not include click analytics.
+
+### Read campaign clicks
+
+```http
+GET /api/v2/url_redirects/aBcDef/stats?timerange_start=2026-10-01T00:00:00Z&timerange_end=2026-10-05T00:00:00Z
+Authorization: Bearer <access_token>
+```
+
+```json
+{
+  "url_redirect": {"id": 42, "public_id": "aBcDef", "name": "Launch"},
+  "timerange": {"from": "2026-10-01T00:00:00Z", "to": "2026-10-05T00:00:00Z"},
+  "click_count": 12
+}
+```
+
+`click_count` counts tracked clicks, including repeated clicks from one visitor,
+using the existing short-link bot exclusion. It is zero when there are no clicks.
+The default window is the last 30 days and the maximum is 90 days. Future end
+values clamp to now; reversed windows reset to the default window ending at the
+applied end. Read back `timerange` for the window actually used. Invalid timestamps
+return `422`.
+
+Missing required bodies or availability `current_path` return `400`. Missing or
+invalid credentials return `401`; insufficient scopes or workspace grants return
+`403`. Missing/inaccessible links (including an availability editing target from
+another workspace) return `404`. Invalid or foreign domains, invalid redirect
+types, model validation failures and explicit path conflicts return `422`. An
+unavailable availability check still returns `200` and never identifies its owner.
