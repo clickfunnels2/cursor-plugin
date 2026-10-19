@@ -443,7 +443,7 @@ POST /api/v2/courses/86816/publish
   `sort_order` is scoped per parent, so it is not globally unique across the list -
   the root and each parent's first child both start at 0 and are tie-broken by id.
   Every ordering is consistent with the pagination cursor, so the Pagination-Next
-  walk returns each section exactly once. It paginates at 20 per page (see below).
+  walk returns each section exactly once. It paginates at 20 per page by default (see below).
 - For each section id, list its lessons
   (`GET /api/v2/courses/sections/:section_id/lessons`). Querying lessons by a
   known `section_id` is the most reliable way to read a section's contents.
@@ -452,9 +452,10 @@ POST /api/v2/courses/86816/publish
 
 ### Pagination
 
-List endpoints page at 20 records and follow the standard V2 cursor convention:
-read the `Pagination-Next` response header and pass it back as the `after` query
-parameter, repeating until the header is absent.
+List endpoints page at 20 records by default (`per_page` raises that to at most
+100) and follow the standard V2 cursor convention: read the `Pagination-Next`
+response header and pass it back as the `after` query parameter, repeating until
+the header is absent.
 
 ```http
 GET /api/v2/courses/86816/sections

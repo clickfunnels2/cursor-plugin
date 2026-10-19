@@ -2,10 +2,11 @@
 name: clickfunnels-contacts
 description: >
   Manage CF2 contacts and the CRM surface programmatically - create, fetch,
-  update, upsert and redact contacts; create and apply tags; run bulk tag,
+  update, upsert and redact contacts; manage named audience segments; create and apply tags; run bulk tag,
   unsubscribe and export actions; and list contacts with filters, sorting and
   cursor pagination. Includes a worked recipe for importing a contact list from
   another platform (email service provider, CRM, membership site) idempotently.
+  Read contact activity and create, edit or delete Activity notes.
   Reads require Contacts read access; creating, updating, tagging, unsubscribing
   and exporting require Contacts write access.
 version: "1.0"
@@ -29,7 +30,7 @@ references:
 
 Contacts are the CRM records in a workspace. Everything that emails, enrolls,
 segments or sells to a person resolves to a contact. This skill covers the
-contact resource itself, its tags, and the bulk actions that operate over a
+contact resource itself, its tags, named audience segments, and the bulk actions that operate over a
 selection of contacts.
 
 ## When to use this skill
@@ -40,6 +41,8 @@ selection of contacts.
 - Bulk-unsubscribing a set of contacts, or honoring an opt-out carried over from another system
 - Exporting the workspace's contacts to CSV
 - Listing or searching contacts by email, tag, or id
+- Creating or updating named audiences in Contacts > Segments
+- Reviewing contact activity and recording support or sales notes in Activity
 
 For building reusable audience filters, see the
 [Refine Filters Skill](https://accounts.myclickfunnels.com/.well-known/refine-filters/skill.md). For sending to the
@@ -91,28 +94,172 @@ just created, check the prefix before concluding the record is missing.
 | Bulk unsubscribe action | POST | `/api/v2/workspaces/{workspace_id}/contacts/unsubscribe_actions` |
 | Bulk export action | POST | `/api/v2/workspaces/{workspace_id}/contacts/export_actions` |
 | Poll any action | GET | `/api/v2/contacts/{action_type}/{id}` |
+| List / create contact topic opt-outs | GET / POST | `/api/v2/contacts/{contact_id}/unsubscribed_topics` |
+| List workspace topic opt-outs | GET | `/api/v2/workspaces/{workspace_id}/contacts/unsubscribed_topics` |
+| Fetch / remove topic opt-out | GET / DELETE | `/api/v2/contacts/unsubscribed_topics/{id}` |
+| List subscription changes | GET | `/api/v2/contacts/{contact_id}/subscription_changes` |
+| Fetch subscription change | GET | `/api/v2/contacts/subscription_changes/{id}` |
+| List / create segments | GET / POST | `/api/v2/workspaces/{workspace_id}/segments` |
+| Fetch / update / delete segment | GET / PATCH / DELETE | `/api/v2/segments/{id}` |
+| List contact events | GET | `/api/v2/contacts/{contact_id}/events` |
+| Fetch contact event | GET | `/api/v2/contacts/events/{id}` |
+| List / create Activity notes | GET / POST | `/api/v2/contacts/{contact_id}/events/notes` |
+| Fetch / update / delete Activity note | GET / PUT / DELETE | `/api/v2/contacts/events/notes/{id}` |
 
 Both the numeric `id` and the obfuscated `public_id` work wherever `{id}`
 appears.
+
+## Topic preferences and subscription history
+
+Use topic preferences to sync a contact's opt-outs with another email platform.
+List active workspace topics with `GET /api/v2/workspaces/{workspace_id}/emails/topics`,
+then read the contact's opt-outs:
+
+```http
+GET /api/v2/contacts/4821/unsubscribed_topics
+Authorization: Bearer <access_token>
+```
+
+Each row includes `id`, `public_id`, `contact_id`, nested `topic` (`id`,
+`public_id`, `name`), `created_at` and `updated_at`. Existing opt-outs for archived
+topics remain readable. The workspace list accepts `filter[id]`,
+`filter[contact_id]` and `filter[topic_id]` with comma-separated numeric IDs.
+Both lists use the standard cursor pagination headers.
+
+To opt out of one active topic in the same workspace:
+
+```http
+POST /api/v2/contacts/4821/unsubscribed_topics
+Authorization: Bearer <access_token>
+Content-Type: application/json
+
+{"contacts_unsubscribed_topic":{"topic_id":12}}
+```
+
+The response is 201 with the opt-out row and its show URL in `Location`.
+A missing, archived or foreign topic returns 422 with
+`Topic must be an active topic in this workspace`. A duplicate returns 422
+with `Contact has already been taken`, using the standard API error envelope.
+An opt-out appears in contact Activity as `Topic Unsubscribed` and affects
+broadcast audiences for that topic.
+
+**Obtain the contact's renewed consent before resubscribing** (CAN-SPAM, GDPR,
+CASL). Send a bodyless `DELETE /api/v2/contacts/unsubscribed_topics/{id}` to remove
+an opt-out. It returns an empty 204 response and records who changed it and when.
+This also clears the contact's all-email `unsubscribed_at` flag when set. It emits
+no `contact.unsubscribed` webhook; `contact.updated` fires only if that flag changed.
+An archived topic's existing opt-out can also be removed.
+
+Subscribed topics are the workspace's active topics minus the opt-out list.
+`unsubscribed_at` is a separate all-email flag: imports and provider unsubscribe
+changes can set it with no topic rows. Reading only topic opt-outs does not tell
+you whether the contact can receive email at all.
+
+Read `GET /api/v2/contacts/{contact_id}/subscription_changes` for the log, or
+`GET /api/v2/contacts/subscription_changes/{id}` for one entry. The log is
+read-only, ordered by ID ascending by default, and uses cursor pagination. Use
+`sort_order=desc` for newest first and preserve that order when following `Pagination-Next`.
+Each entry has `id`, `public_id`, `contact_id`, integer `added_topic_ids` and
+`removed_topic_ids` arrays, `source_type`, `source_id`, boolean `automated` and
+`created_at`. Empty historical arrays are returned as `[]`; an unset automated
+flag is returned as `false`. API and admin changes identify a `Membership` source;
+preference-page, bulk unsubscribe and provider events identify a `Contact` source.
+
+With MCP, discover `contacts`, then use `contact_unsubscribed_topic` for
+list/fetch/create/destroy and `contact_subscription_change` for list/fetch.
+Supply `workspace_id` on each call and `parent_id` (the contact ID) on list/create.
+Create with flat `attributes: {"topic_id":12}`. Reads require Contacts read
+access; opt-out creation and resubscription require Contacts write access.
+
+## Contact activity and notes
+
+Events are the contact's Activity records, excluding MessageHub conversation
+events. `type_key` is the event type key, `type_label` its label, and `data` is free-form,
+type-dependent JSON. `actor_id` is a user id, resolvable through
+`GET /api/v2/users/{id}`, or null for contact and system activity.
+
+```http
+GET /api/v2/contacts/6/events?filter[type]=$order.successful_purchase,$contact.note&sort_order=desc
+Authorization: Bearer <access_token>
+```
+
+Lists sort by `created_at`, then `id`; `sort_order=desc` reads latest activity
+first. Keep that direction and any type filter while following `Pagination-Next`
+as `after`. `sort_property` is rejected with 422. `occurred_at` is the tracked
+time, falling back to `created_at`, so backdated notes and backfilled events can
+have occurrence times outside page order. Unknown type keys match no rows.
+
+Unfiltered and multi-type reads return 422 when a contact has more than 50,000
+events. Read one type at a time with a single `filter[type]` key for those
+contacts. Notes-only lists always select the note type.
+
+To record a note, send `contacts_events_note` with nonblank `content` and an
+optional ISO 8601 `occurred_at`. Text has no length cap. Omitting `occurred_at`
+on creation uses server time; omitting it on update retains the previous time.
+Blank content or an unparsable timestamp returns 422.
+
+```http
+POST /api/v2/contacts/6/events/notes
+Authorization: Bearer <access_token>
+Content-Type: application/json
+
+{"contacts_events_note":{"content":"Called about the refund; promised a callback on Friday.","occurred_at":"2026-10-12T14:03:00Z"}}
+```
+
+The create response (201) is the same shape returned by fetch and update:
+
+```json
+{
+  "id": 1,
+  "public_id": "beYLJL",
+  "contact_id": 6,
+  "created_at": "2026-10-13T12:55:52.617Z",
+  "updated_at": "2026-10-13T12:55:52.617Z",
+  "content": "Called about the refund; promised a callback on Friday.",
+  "created_by_id": 4,
+  "occurred_at": "2026-10-12T14:03:00.000Z"
+}
+```
+
+The note appears in Activity with your author and "via API". Its id is also the
+event id; the event response has `type_key: "$contact.note"` and the text in
+`data.note`. The note response's `created_by_id` is a **membership** id, while
+the event's `actor_id` is a **user** id. UI notes resolve their author's
+membership in the workspace's team; workflow notes return null for
+`created_by_id`.
+
+Read, edit or permanently delete any accessible note, including UI and workflow
+notes, through the note member route. Updates preserve original attribution and
+source; only `content` and `occurred_at` are writable. DELETE returns an empty
+204 response. Other event types return 404 on every note member action. These
+note changes emit no outgoing webhooks.
+
+With MCP, discover the Contacts category, then use `contact_event` for list/fetch
+or `contact_event_note` for full CRUD. Both have parent `contact`: supply
+`parent_id` for list/create, plus `workspace_id`. Use `filters: {"type":
+"$contact.note"}` on event lists, `sort_order: "desc"` for latest activity,
+and pass flat note `attributes: {"content": "Called about refund"}` on create.
+Reads require Contacts read access; note writes require Contacts write access.
 
 ## Listing contacts
 
 ### Pagination is cursor-based
 
-There is **no `page` or `per_page` parameter**. The list endpoint returns a
-fixed page and a cursor:
+There is **no `page` parameter**. The list endpoint returns a page of 20 records
+by default and a cursor:
 
 - `Pagination-Next` response header - the id to pass as `after` on the next call
 - `Link` response header - the full next-page URL, `rel="next"`
+- `per_page` query parameter - raise the page size up to 100 for a bulk read;
+  the `Link` URL keeps it, a larger value returns 100, and zero or a non-integer
+  is a 422, never a silent fall-back to 20
 
 Stop when the response body is an empty array, or when `Pagination-Next` is
 absent.
 
-> **Trap:** unrecognized top-level query parameters are silently ignored rather
-> than rejected. `?per_page=100` returns a normal 200 with the default page
-> size, so an agent that assumes it worked will silently process a fraction of
-> the list and report success. Always drive pagination from the
-> `Pagination-Next` header, never from a page counter.
+> **Trap:** other unrecognized top-level query parameters are silently ignored
+> rather than rejected, so always drive pagination from the `Pagination-Next`
+> header, never from a page counter.
 
 ```bash
 # Walk the whole list
@@ -136,7 +283,7 @@ done
 | `filter[id]` | Comma-separated contact id list |
 | `filter[tag_ids]` | Comma-separated tag id list |
 | `filter[is_active]` | Boolean |
-| `stored_filter_id` | Id or public id of a saved ContactsFilter |
+| `stored_filter_id` | Id or public id of a saved contact filter, including a segment's `filter.id` |
 | `stable_id` | URL-encoded Refine token |
 | `sort_property` | `id` (default) or `updated_at` |
 | `sort_order` | `asc` (default) or `desc` |
@@ -171,6 +318,120 @@ response as proof that your top-level parameter was understood.
 curl -sS -g -H "Authorization: Bearer ${TOKEN}" \
   "https://api.myclickfunnels.com/api/v2/workspaces/${WS}/contacts?filter[tag_ids]=448335"
 ```
+
+## Segments
+
+A segment is a named contact audience visible in Contacts > Segments and
+selectable in broadcasts. Reads require `contacts:read`; creating, updating
+and deleting require `contacts:write`. Numeric and public IDs both work in
+member paths. No workspace prefix is used on those member paths.
+
+Create a saved contact filter with the
+[Refine Filters Skill](https://accounts.myclickfunnels.com/.well-known/refine-filters/skill.md), then copy it into
+a named audience:
+
+```http
+POST /api/v2/workspaces/{workspace_id}/segments
+Authorization: Bearer <access_token>
+Content-Type: application/json
+
+{
+  "segment": {"name": "VIP buyers", "filter_id": 77}
+}
+```
+
+`filter_id` accepts the numeric or public ID of a saved contact filter in the
+same workspace, or a serialized contact filter. It needs at least one
+condition, and its conditions must share one conjunction (all `and` or all
+`or`), because a segment reads its audience back as one conjunction over its
+criteria. The segment stores an unnamed copy of its state. The response's
+`filter.id` identifies that copy; changing or deleting the source saved
+filter leaves the segment's audience unchanged. Editing the segment in the UI
+also leaves the source unchanged.
+
+The copy's `filter.id` also works as `stored_filter_id` on the contacts list and
+the workspace stats endpoint, and with `results` on the Refine Filters endpoint,
+so you can page or count a segment's contacts with the tools you already use.
+
+Create returns 201. Fetch and update return 200 with `id`, `public_id`,
+`workspace_id`, `name`, `filter`, `created_at`, and `updated_at`. `filter` is
+the segment's copy shaped like a saved filter from the Refine Filters endpoint:
+`id`, `public_id`, `filter_class`, `conjunction`, `criteria`,
+`mixed_conjunctions` and its timestamps. Segments created here or in the UI read
+`ContactsSegmentsFilter`.
+Unreadable legacy state returns a null `filter_class` and empty `criteria`. No
+`filter_type` field is added to the response.
+
+For example, a created segment returns this resource shape:
+
+```json
+{
+  "id": 1,
+  "public_id": "YJeWNM",
+  "workspace_id": 3,
+  "name": "VIP buyers",
+  "filter": {
+    "id": 4,
+    "public_id": "XyZaBc",
+    "workspace_id": 3,
+    "name": null,
+    "filter_class": "ContactsSegmentsFilter",
+    "conjunction": "and",
+    "criteria": [
+      {
+        "attribute": "email_address",
+        "clause": "eq",
+        "value": "vip@example.com"
+      }
+    ],
+    "mixed_conjunctions": false,
+    "created_at": "2026-10-13T14:07:24.772Z",
+    "updated_at": "2026-10-13T14:07:24.772Z"
+  },
+  "created_at": "2026-10-13T14:07:24.772Z",
+  "updated_at": "2026-10-13T14:07:24.772Z"
+}
+```
+
+```http
+PATCH /api/v2/segments/{id}?results[count]=true
+Authorization: Bearer <access_token>
+Content-Type: application/json
+
+{
+  "segment": {"name": "VIP buyers (Q4)", "filter_id": "AbCdEf"}
+}
+```
+
+Omitted update attributes keep their stored values. A `filter_id` with a
+different audience is copied and attached to the same segment; re-sending the
+segment's current audience keeps its copy, so replays add no stored filters.
+
+List returns an array of segments, ordered by ID ascending with standard cursor
+pagination. `filter[name]=VIP%20buyers` matches an exact name; separate several
+names with commas to match any of them. Names are not unique, so one name can
+match several segments. Segments created in the UI appear in the same list. A
+UI segment whose groups mix `and` and `or` reads as one conjunction over its
+criteria with `filter.mixed_conjunctions: true`; use `results` to see its exact
+audience rather than rebuilding it from `criteria`.
+
+Fetch, create, and update accept the shared
+[filter results contract](https://accounts.myclickfunnels.com/.well-known/refine-filters/skill.md#reading-a-filters-matches).
+Results are omitted unless requested and select contacts using the segment's
+stored copy. Counts are opt-in; a `count_capped_at` beside `count` means it is a
+floor rather than an exact total. Results require `contacts:read`.
+
+Delete returns 204 with no body and leaves the stored filter copy in place.
+Deleting a stored filter still used by a segment returns 422 and names the
+segment. An invalid, order, or foreign-workspace `filter_id`, a filter with no
+conditions or with mixed `and`/`or`, a missing filter on create, or a blank
+name returns 422, and the `Tip` names the reason. Inaccessible segments return
+404, and a token limited to other workspaces gets 403.
+
+Through MCP, call `describe_category` for `contacts`, then use the generic
+`list`, `fetch`, `create`, `update`, and `destroy` tools with resource `segment`.
+Pass `name` and `filter_id` in `attributes`; `results` also goes in
+`attributes` for create/update, and in `params` for fetch.
 
 ## Upserting a contact
 
@@ -585,7 +846,7 @@ later import of the same list can re-add the person as subscribed.
 | 400 `found unpermitted parameter: :x` | Unknown key inside `filter` | Use an allow-listed filter key. |
 | 422 `Name has already been taken` | Tag name already exists in the workspace | List tags and reuse the existing id. |
 | 502 with an HTML body | Transient upstream error | Retry on status code; do not parse the body as JSON. |
-| Only a fraction of contacts returned | Used `page` / `per_page`, which are ignored | Paginate with `after` + the `Pagination-Next` header. |
+| Only a fraction of contacts returned | Used `page`, which is ignored | Paginate with `after` + the `Pagination-Next` header; `per_page` (max 100) sets the page size. |
 | Tags disappeared after an upsert | `tag_ids` overwrites | Use a bulk tag action with `action_type: "add"`. |
 | A field would not clear | Upsert ignores empty values | Use `PATCH /api/v2/contacts/{id}`. |
 | Deleted contact still returns 200 on fetch | `DELETE` is a soft delete | Expected. Check `deleted_at` to tell it apart, or use `gdpr_destroy` if the data must actually go. |

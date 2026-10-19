@@ -149,12 +149,12 @@ cancels with defaults. All fields nest under `order`:
 
 | Field | Default | Notes |
 |-------|---------|-------|
-| `effective_date` | `next_renewal` | `next_renewal` cancels at the end of the paid period (access retained until `paid_until`). Any other value cancels immediately. |
+| `effective_date` | `next_renewal`, or immediate when the current period was never paid for | `next_renewal` cancels at the end of the paid period (access retained until `paid_until`). Any other value cancels immediately. Omitted, it cancels immediately when `billing_status` is `unpaid`, `past-due`, `delinquent`, `failed`, `voided`, `abandoned` or `disputed`. |
 | `cancel_reason` | `other` | Processor-specific set (see below). An unaccepted value returns `422`. |
 | `cancel_description` | `""` | Free-text note stored on the order. |
 | `cancelation_proration` | `false` | Whether to prorate on an immediate cancel. |
 | `canceled_by` | `API` | Attribution persisted on the order and recorded on its timeline. |
-| `voidable_invoices` | none | Array of invoice ids to void as part of the cancel. |
+| `voidable_invoices` | all open invoices | Array of the order's invoice ids to void as part of the cancel. Omitted, every `unpaid` or `past-due` invoice is voided so the processor stops retrying it. Send `[]` to keep them open. Anything that is not an array returns `422`. |
 
 `cancel_reason` and `cancel_description` mirror the `cancel_reason` / `cancel_description`
 fields you read back on the order, so you can round-trip them.
@@ -311,6 +311,7 @@ curl -X GET \
 | Error | Cause | Fix |
 |-------|-------|-----|
 | `422 Only subscription orders can be canceled` | Cancelled a one-time order. | Only subscription orders can be cancelled. If you meant to reverse a charge, refund the transaction instead. |
+| `422 voidable_invoices must be an array of invoice ids` | Sent `null` or a bare id as `voidable_invoices`. | Send an array of ids, `[]` to keep every invoice open, or leave the field out to void every open invoice. |
 | `422 trial_end_at can only be adjusted while the order is in a trial` | The order already converted or never had a trial. | Check `in_trial` and `trial_end_at`. A pending Payments AI order with a future trial end can send equal `trial_end_at` and `renewal_at` values together. |
 | `422 renewal_at cannot be adjusted on a Stripe order` | Stripe has no renewal date to move. | Move `trial_end_at` while the order is still in a trial, or cancel and re-subscribe. |
 | `422 renewal_at cannot be adjusted while the order is <status>` | The subscription is canceled, churned, or completed. | Only `pending`, `active`, and `paused` orders have a renewal date to move. |

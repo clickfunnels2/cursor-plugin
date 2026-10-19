@@ -598,7 +598,8 @@ These are the DSL parser errors returned at validate time. HTTP-level errors
   Requires the Whop app to be connected for the workspace (Workspace Settings >
   Apps). Writing this element to a workspace without it returns a 400.
 
-  Use on funnel steps only, and at most one per page.
+  Use on funnel steps only. A page can carry more than one, each with its own
+  plan and settings.
 
   Both environments are configured up front; the funnel's own live/test mode
   decides which plan is served. Plan and account ids come from Whop, not from
@@ -616,23 +617,35 @@ These are the DSL parser errors returned at validate time. HTTP-level errors
   Plans        live-plan-id, live-account-id, test-plan-id, test-account-id
   Appearance   theme="light|dark" (default light)
                accent="#HEX", background="#HEX"  (hex only, no CSS variables)
-               button-text="Join now"            (empty = Whop's own label)
-  Fields       hide-price, hide-tos, hide-submit-button, hide-email,
-               collect-shipping                  (all "true"|"false")
-               collect-phone="false|optional|true" (default false)
+               width="800px" (px or %, default 800px)
   After sale   after-checkout="funnel_step|plan|override" (default funnel_step)
                return-url="https://..."          (override only)
-               skip-redirect="true|false"        (override only)
-  Advanced     adaptive-pricing, save-payment-details, skip-utm ("true"|"false")
-               affiliate-code="aff_123"
+  Advanced     skip-utm="true|false", affiliate-code="aff_123"
   Messages     unavailable-text, not-configured-text
 
-  Values are checked, not passed through. Every toggle takes exactly "true" or
-  "false", the three option attributes take only the values listed above, and
-  colors must be hex (`#1d4ed8` or `#18d`) - `rgb(...)`, a CSS variable or a
-  color name is rejected. A 400 naming the attribute is deliberate: a typo like
-  `after-checkout="funnelstep"` would otherwise be accepted and silently drop the
-  buyer's advance to the next funnel step.
+  After a purchase, `funnel_step` moves on to the next step of the funnel (the
+  last step has none). `plan` leaves the buyer to Whop, which sends them to the
+  redirect URL set on the plan in Whop, or shows its own confirmation when the
+  plan has none. `override` sends the buyer to `return-url`.
+
+  `width` is the most the checkout grows to; it is never wider than its column.
+  Whop lays the checkout out by its width: below 1024px the plan sits above the
+  form, from 1024px beside it. The default 800px keeps the plan on top; set
+  1024px or more for the side-by-side layout.
+
+  What the checkout shows and collects (price, terms, email, shipping, phone,
+  the pay button's label) follows the plan in Whop. The older attributes
+  button-text, hide-price, hide-tos, hide-submit-button, hide-email,
+  collect-shipping, collect-phone, adaptive-pricing, save-payment-details and
+  skip-redirect are still accepted but have no effect and are never returned.
+
+  Values are checked, not passed through. `skip-utm` takes exactly "true" or
+  "false", the option attributes take only the values listed above, colors
+  must be hex (`#1d4ed8` or `#18d`) - `rgb(...)`, a CSS variable or a color name
+  is rejected - and `width` must be a positive number in px or % (`800px`,
+  `80%`). A 400 naming the attribute is deliberate: a typo like
+  `after-checkout="funnelstep"` would otherwise be accepted and silently send the
+  buyer somewhere other than intended.
 
   An element with no plan id for the mode being served renders a notice instead
   of a checkout - `unavailable-text` in live mode, where the reader is a buyer,

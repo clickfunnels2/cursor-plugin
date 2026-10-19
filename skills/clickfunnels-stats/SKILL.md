@@ -4,7 +4,8 @@ description: >
   Read aggregated analytics of both kinds: performance metrics for a funnel or a
   single page - views, opt-ins, sales, earnings over a configurable timerange -
   and workspace record stats over a filtered set of records - counts, breakdowns by a
-  property, date ranges and numeric totals for contacts and orders. Use this
+  property, date ranges and numeric totals for contacts, orders and form
+  submissions. Use this
   skill any time you need a number rather than the records themselves: surfacing
   funnel or page performance, recurring agent jobs that audit funnels daily, or
   answering "how many match this" and "what is the breakdown" without paging a
@@ -126,6 +127,8 @@ Record stats computes and persists nothing, so a read-only token may call it.
 | `timerange_end`    | ISO8601 | now                                  | Clamped: future end dates are clamped to now.                      |
 
 The window is also clamped to a **90-day maximum**. Requests for longer windows are silently truncated to 90 days. For multi-quarter analysis, page through 90-day windows and aggregate client-side.
+
+Both take ISO 8601 only: `2026-09-01T00:00:00Z`, `2026-09-01T00:00:00+02:00` or a bare date. Anything else is a 422. A query string turns an unencoded `+` into a space, so send an offset's `+` as `%2B` (or use `Z`); unencoded, it is a 422 rather than a window shifted by the offset.
 
 ## Funnel stats
 
@@ -259,12 +262,16 @@ underlying scan.
 
 ### Statistics by resource
 
-| Statistic | Parameters | Returns | `contact` | `order` |
-|-----------|------------|---------|-----------|---------|
-| `count` | none | Matching records | yes | yes |
-| `count_by` | `property` | One count per distinct value of that property | yes | yes |
-| `created_at_range` | none | Earliest and latest `created_at` in the set | yes | yes |
-| `sum` | `property` | Total of one numeric property | no | yes |
+| Statistic | Parameters | Returns | `contact` | `order` | `form_submission` |
+|-----------|------------|---------|-----------|---------|-------------------|
+| `count` | none | Matching records | yes | yes | yes |
+| `count_by` | `property` | One count per distinct value of that property | yes | yes | yes |
+| `created_at_range` | none | Earliest and latest `created_at` in the set | yes | yes | yes |
+| `sum` | `property` | Total of one numeric property | no | yes | no |
+
+`form_submission` reports on the rows `GET /api/v2/workspaces/{workspace_id}/form_submissions`
+lists: one per form post on a ClickFunnels page, checkout submits and repeat posts by the
+same contact included. It needs read access to Forms.
 
 `count_by` and `sum` take their `property` from a per-resource allow-list, because
 grouping or totalling an unindexed column on a large table is expensive:
@@ -273,6 +280,7 @@ grouping or totalling an unindexed column on a large table is expensive:
 |----------|-----------------------|------------------|
 | `contact` | `is_active`, `anonymous`, `email_suppression_reason`, `time_zone` | - |
 | `order` | `billing_status`, `service_status`, `order_type`, `live_mode` | `total_amount`, `tax_amount`, `total_collected` |
+| `form_submission` | `page_id` | - |
 
 Call the endpoint with a resource but no statistics and the 422 lists exactly what
 that resource supports, so the endpoint documents itself:
@@ -295,7 +303,24 @@ record of that resource in the workspace.
 | Resource | `filter` keys |
 |----------|---------------|
 | `contact` | `id`, `email_address`, `is_active`, `tag_ids` |
-| `order` | `id`, `contact_id`, `order_type`, `billing_status`, `service_status`, `live_mode` |
+| `order` | `id`, `contact_id`, `order_type`, `billing_status`, `service_status`, `live_mode`, `funnel_id`, `product_id` |
+| `form_submission` | `id`, `page_id`, `contact_id` |
+| every resource | `created_at_after`, `created_at_before` |
+
+`funnel_id` selects the orders attributed to a funnel (the funnel the buyer checked out
+through); `product_id` selects every order containing the product, whether it came through
+a funnel, a store or was created by hand. Every id filter (`id`, `contact_id`, `page_id`,
+`tag_ids`, `funnel_id`, `product_id`) takes a numeric `id` or a `public_id`, and a
+comma-separated list of either. An id that is not one of this workspace's records is a 422
+that names it, never a silent zero.
+
+`created_at_after` is inclusive and `created_at_before` exclusive (ISO 8601 timestamps,
+date-only is midnight UTC), so a poller that passes the previous call's `before` as the
+next call's `after` sees every record exactly once. Send an offset's `+` as `%2B`: an
+unencoded `+` arrives as a space, which is a 422.
+
+`stable_id` and `stored_filter_id` apply to `contact` and `order` only; `form_submission`
+has no filter class, so either selector on it is a 422 rather than a silently ignored one.
 
 Comma-separated values match any of them, so `{"tag_ids": "39,44"}` counts contacts
 carrying either tag. An unknown key is a 422 rather than being ignored, because a
@@ -330,6 +355,68 @@ and they carry the same scale the resource's own records do - a total of exactly
 dollars is `"100.00"`, not `"100.0"`, so the value can be formatted or compared without
 re-deriving the scale.
 
+### Sales for one funnel or product, without paging orders
+
+```http
+GET /api/v2/workspaces/{workspace_id}/stats?resource=order&count=true&sum[property]=total_collected&count_by[property]=billing_status&filter[funnel_id]=41&filter[live_mode]=true&filter[created_at_after]=2026-10-01T00:00:00Z
+Authorization: Bearer <access_token>
+```
+
+```json
+{
+  "resource": "order",
+  "workspace_id": 5,
+  "stats": {
+    "count": 312,
+    "sum": { "property": "total_collected", "value": "15480.00" },
+    "count_by": {
+      "property": "billing_status",
+      "values": { "paid": 298, "refunded": 9, "pending": 5 },
+      "capped": false
+    }
+  }
+}
+```
+
+Swap `filter[funnel_id]` for `filter[product_id]` to total the orders containing one
+product across every channel. The sum includes every product on each matching order.
+For the orders themselves rather than the numbers, use the order list with a Refine filter
+on the same funnel or product (the [Refine Filters Skill](https://accounts.myclickfunnels.com/.well-known/refine-filters/skill.md)).
+
+### Form submissions per page in one call
+
+Counting a funnel's form submissions used to mean paging the submission log 20 at a time.
+Group by `page_id` instead, narrowed to the funnel's pages (their ids come from the funnel's
+structure, see the Funnels skill):
+
+```http
+GET /api/v2/workspaces/{workspace_id}/stats?resource=form_submission&count_by[property]=page_id&filter[page_id]=41,42&created_at_range=true
+Authorization: Bearer <access_token>
+```
+
+```json
+{
+  "resource": "form_submission",
+  "workspace_id": 5,
+  "stats": {
+    "count_by": {
+      "property": "page_id",
+      "values": { "41": 1284, "42": 97 },
+      "capped": false
+    },
+    "created_at_range": { "min": "2026-09-01T08:12:40.000Z", "max": "2026-10-09T11:58:03.000Z" }
+  }
+}
+```
+
+These are form posts, not opt-ins: a checkout submit and a contact posting the same form
+twice each add one, so the numbers run higher than the funnel dashboard's. For opt-ins the
+way the dashboard counts them, read `optins` from Funnel stats or Page stats, above; funnel
+stats also return `optins_unique`.
+
+Polled every few minutes, `count` on one page is also the cheapest spike detector for a
+form under bot attack: one number per poll instead of a page walk.
+
 `sum.value` is `null` when, and only when, the matching set is EMPTY. A non-empty set whose
 rows all have no value in that column totals `"0.00"`, matching what those records themselves
 report, so `null` never has to be told apart from a real zero. `created_at_range` follows the
@@ -338,29 +425,35 @@ confirm it - ask for it in the same call.
 
 ### Bounds on very large sets
 
-Counting scans rows, so a single call is bounded rather than allowed to become a full
-table scan.
+Every stat is computed over the whole matching set. The bound is time, not rows: each
+query has a statement timeout, and the request has an overall time budget.
 
-- Past the bound, `count` returns the bound and a `count_capped_at` appears alongside
-  it. The real total is higher - narrow the filter and ask again.
-- `count_by` reports `capped: true` when its breakdown covers only the bounded slice.
-- Exact aggregates (`created_at_range`, `sum`) are **not computed at all** past the
-  bound. They are named in an `unavailable` array with an `unavailable_reason`, rather
-  than returned as a confidently wrong number.
+- A stat that cannot finish in time is left out of `stats` and named in an
+  `unavailable` array. Its `unavailable_reason` says what to do: narrow the filter when
+  the query itself took too long, or ask for that stat on its own when the request's
+  time budget ran out first. It is **never computed over part of the set**.
+- `count` has one fallback of its own. Past 100,000 matches, if counting the whole set
+  cannot finish in time, it returns 100,000 with a `count_capped_at` alongside it. The
+  real total is then higher - narrow the filter and ask again. No `count_capped_at`
+  means `count` is exact.
+- `count_by` still carries `capped` for compatibility. It is always `false`.
 
 ```json
 {
-  "resource": "contact",
+  "resource": "order",
   "workspace_id": 5,
-  "stats": { "count": 100000, "count_capped_at": 100000 },
-  "unavailable": ["created_at_range"],
-  "unavailable_reason": "More than 100000 matching records, so exact aggregates were not computed. Narrow the filter and retry."
+  "stats": { "count": 184321 },
+  "unavailable": ["sum"],
+  "unavailable_reason": "Took longer than 10s to compute and was stopped, so retrying it unchanged will fail the same way. Narrow the filter (for example with filter[created_at_after]) and retry."
 }
 ```
 
-A filter that takes too long to evaluate returns a 422 saying so. That is
-deterministic rather than transient: retrying it unchanged fails identically. Narrow
-it, or ask for a `count` rather than records.
+When nothing requested can be computed in time, because the filter or the stats
+themselves take too long, the call returns a 422 saying so.
+That is deterministic rather than transient: retrying it unchanged fails identically.
+Narrow it (add `filter[...]` keys, or bound it with `filter[created_at_after]` and
+`filter[created_at_before]`), request fewer stats, or ask for a `count` rather than
+records.
 
 The 503 that mentions the request budget is the opposite case, and the two must not be
 confused. It means the REQUEST's wall clock ran out before the filter got a fair slice,

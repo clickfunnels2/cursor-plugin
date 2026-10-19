@@ -29,12 +29,14 @@ references:
 # ClickFunnels Refine Filters Skill
 
 Build, store, and reuse audience filters that any CF2 surface accepting a
-`filter_id` can attach. The two main consumers are:
+`filter_id` can attach. The main consumers are:
 
 - **Conditional Split Steps** - branch contacts down a workflow path based on a stored filter.
 - **Email Broadcasts** - scope which contacts a broadcast is sent to.
+- **Segments** - copy the filter into a named audience in Contacts > Segments;
+  see the [Contacts Skill](https://accounts.myclickfunnels.com/.well-known/contacts/skill.md#segments).
 
-Other surfaces (segments, workflow branches, store upsells, shipping zones, etc.)
+Other surfaces (workflow branches, store upsells, shipping zones, etc.)
 also accept stored filter ids when applicable.
 
 ## When to use this skill
@@ -56,9 +58,14 @@ also accept stored filter ids when applicable.
 - Breaking a filtered set down by a property, or totalling a numeric column
   over it
 
-A filter created via this API is a saved filter record scoped to a workspace -
-it is **shared across every consumer** that takes a `filter_id` in that same
-workspace.
+A filter created via this API is a reusable saved filter scoped to a workspace.
+Named contact filters created or updated here, or generated with `save: true`,
+appear in the Saved Filters tab of contact filter pickers. Existing rows are
+not backfilled; updating one through this API makes it available to the picker.
+Segments and broadcasts copy the filter when it is attached, so editing or
+deleting the saved source does not change their audience. Other consumers,
+such as conditional splits, can retain a direct reference; check the consumer's
+guide before editing a shared audience.
 
 ## Authentication
 
@@ -98,13 +105,15 @@ Store the `access_token` from the response. It is long-lived.
 The manual CRUD endpoints use the wrapped `refine_filter` body documented
 below. The natural-language generation endpoint uses a separate flat body.
 
-List has two modes, and `after` is the switch. Omit it and you get the original
-full-registry response: every saved filter in one payload, no `Pagination-Next`
-header. Send it and you get bounded pages of 20.
+List has two modes, and `after` or `per_page` is the switch. Omit both and you get
+the original full-registry response: every saved filter in one payload, no
+`Pagination-Next` header. Send either and you get bounded pages, 20 by default or
+`per_page` (at most 100).
 
-On the first paged request you have no cursor yet, so send `after=0`. It is the
-opt-in itself rather than a row id (real ids start at 1), and it means "start at
-the beginning" in whichever direction `sort_order` asks for, so
+On the first paged request you have no cursor yet, so send `after=0`, or just the
+`per_page` size. `after=0` is the opt-in itself rather than a row id (real ids
+start at 1), and it means "start at the beginning" in whichever direction
+`sort_order` asks for, so
 `after=0&sort_order=desc` walks the registry newest-first. From there, send each
 `Pagination-Next` value back as the next `after` until that response header is
 absent, which is how you know you read the last page.
@@ -114,12 +123,21 @@ filter can be resolved by name instead of id. A legacy row whose stored state ca
 no longer be decoded is returned with `filter_class: null` and empty `criteria`
 instead of failing the list; it can still be deleted.
 
+Every filter also carries `mixed_conjunctions`. It is `true` when the saved
+filter joins its conditions with both `and` and `or`, as filters grouped in the
+UI can; `conjunction` and `criteria` then summarize it as one conjunction over
+all criteria. Read its exact matches with `results`, and do not rebuild it from
+`criteria`, which would select a different audience.
+
 The list returns **every** filter class saved in the workspace, not only the
 ones this API authors. Alongside `ContactsFilter` and `OrdersFilter` you will
 see classes saved by other ClickFunnels surfaces - `ContactsSegmentsFilter`,
 `ProductsFilter`, `FunnelsFilter`, `ContactUpsellsFilter` and others. Treat
 `filter_class` as an open set: select the class you want rather than assuming
-the rest are absent.
+the rest are absent. `ContactsSegmentsFilter` rows hold segment audiences: they
+work wherever a contact filter id does (`stored_filter_id`, `results`), but
+`PATCH` refuses them, so change a segment's audience through the
+[Contacts skill](https://accounts.myclickfunnels.com/.well-known/contacts/skill.md#segments) Segments endpoints.
 
 ## Generate a contact filter from plain English
 
@@ -264,6 +282,11 @@ in the [Developer Community](https://developers.myclickfunnels.com/page/code-sup
 - `conjunction` is fixed to `"and"` on the public API. Mixed/nested grouping is
   not supported.
 - `criteria` must be a non-empty array. Each entry is `{attribute, clause, value}`.
+- Event criteria with a date restriction also carry `date_refinement: {clause, value}`.
+  Its value is an ISO8601 date, two dates for a range,
+  or `{days, modifier}` for a relative comparison. Preserve it when reusing returned
+  criteria. Serialized contact and segment tokens retain the same date restriction
+  as their saved-filter IDs.
 
 ## Response shape
 
@@ -601,9 +624,10 @@ Three things worth knowing before you raise the budget:
 - `max_bytes` is a row-cost budget, not an exact wire-size ceiling. Leave headroom
   for final response encoding.
 - `count` is present only when you pass `results.count: true`. It is the filter's
-  TOTAL match count, not the number of rows returned. On a very large audience it
-  saturates at the server's scan cap and a `count_capped_at` comes back with it -- then
-  `count` is a floor, not a total, and you narrow the filter to get an exact number. If
+  TOTAL match count, not the number of rows returned. It stays exact past the server's
+  scan cap as long as counting the whole audience finishes in time. Only when it cannot
+  does it saturate at the cap with a `count_capped_at` beside it -- then `count` is a
+  floor, not a total, and you narrow the filter to get an exact number. If
   only that extra count query reaches the time budget, the valid rows and cursor still
   return, `count` is omitted, and `count_unavailable_reason` explains how to recover.
 
@@ -636,11 +660,22 @@ Authorization: Bearer <access_token>
 ```
 
 Prefer `results` on the filter for a whole audience: the contacts list pages at 20
-records, so reassembling a large set through it costs one request per 20 records.
+records by default and at most 100 with `per_page`, so reassembling a large set
+through it costs one request per 100 records at best.
 
 ## Applying filters to consumers
 
-A filter is only useful once attached to a consumer. The two primary surfaces:
+A filter is only useful once attached to a consumer.
+
+### Applying filters to segments
+
+Use `POST /api/v2/workspaces/{workspace_id}/segments` with
+`{"segment":{"name":"VIP buyers","filter_id":42}}` to copy a saved contact
+filter into a named audience. Numeric IDs, public IDs, and serialized contact
+filters are accepted. Read or update it at `/api/v2/segments/{id}`; its returned
+`filter_id` identifies its own copy. Source edits and segment edits are
+independent. See [Segments in the Contacts Skill](https://accounts.myclickfunnels.com/.well-known/contacts/skill.md#segments)
+for CRUD, results, scopes and deletion behavior.
 
 ### Applying filters to conditional split steps
 

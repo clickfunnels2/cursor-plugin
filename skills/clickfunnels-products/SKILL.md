@@ -331,7 +331,7 @@ Things that will save you a round-trip:
   discount, `50` means $50. It must be positive whenever `require_minimum_spend` is true.
 - The response's `active` / `expired` / `scheduled` booleans are derived from
   `apply_from` / `apply_until` - read them instead of recomputing from the dates.
-- **`redemptions_count` is not a deletability signal.** It counts completed sales only, so
+- **`redemptions_count` is not a deletability signal.** It counts redemptions on an invoice only, so
   a discount can report `0` and still be attached to an order, which is what DELETE
   actually checks. Treat a 422 on DELETE as the answer, not the count.
 
@@ -398,7 +398,7 @@ discount's end date out, which revives it the same way `expired: false` does.
 `DELETE /api/v2/discounts/:id` hard-deletes the discount, but only one that is **not**
 attached to an order - an attached discount returns 422 (expire it instead, to preserve
 its order history). `redemptions_count: 0` does not mean it is deletable: that counter
-only tracks completed sales, while DELETE checks every order and invoice the discount is
+only tracks redemptions on an invoice, while DELETE checks every order and invoice the discount is
 attached to. A discount that no order or invoice ever carried - the usual case for a code
 you created and never published - is always deletable.
 
@@ -464,5 +464,5 @@ GET /api/v2/products/1018736/prices?filter[variant_id]=5632221
 | 422 "`expired` must be true or false" | `expired` sent as something else (`""`, `1`, a typo) | Send a JSON boolean. Nothing else counts as "expire it". |
 | 422 "`expired` is not a create field" | `expired` sent to POST /discounts at any value, `false` included | Create the discount, then PATCH `expired: true`. |
 | 422 "`&lt;field&gt;` must be one of: ..." | `discount_type`, `discount_method` or `applies_to` set to a value outside its list | The message names the values that would work. |
-| 422 on DELETE of a discount showing `redemptions_count: 0` | The counter tracks completed sales; DELETE checks every order and invoice the discount is attached to | Expire it instead of deleting it. |
+| 422 on DELETE of a discount showing `redemptions_count: 0` | The counter tracks redemptions on an invoice; DELETE checks every order and invoice the discount is attached to | Expire it instead of deleting it. |
 | 404 "Not found" | Product/variant/price/discount id outside the token's scope | Verify the id and the workspace the token can reach. |
