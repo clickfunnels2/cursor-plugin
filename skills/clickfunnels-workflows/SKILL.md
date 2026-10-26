@@ -83,8 +83,10 @@ Content-Type: application/json
 { "workflow": { "name": "Welcome Series" } }
 ```
 
-`run_type` is server-controlled - API-created workflows are always `asynchronous` (steps run
-via background jobs), so you don't pass it. The response includes `public_id`,
+API-created workflows start as `run_type: "asynchronous"` (a `run_type` on create is ignored).
+To change it, `PATCH /api/v2/workflows/:id` with `{"workflow": {"run_type": "one_time"}}`;
+values are `asynchronous` (simultaneous runs per contact), `synchronous` (back to back) and
+`one_time` (each contact at most once); anything else -> 422. The response includes `public_id`,
 `status: "draft"`, `disabled: true`, and `active_runs_count` / `completed_runs_count`.
 
 ## Triggers
@@ -127,6 +129,12 @@ Content-Type: application/json
 
 > ! For **site events** (`$optin`, `$view`) scope with **`page_id`**, not `funnel_id` - these
 > events carry no funnel association, so a `funnel_id` condition silently never matches.
+
+> ! Condition fields go **directly on `workflows_trigger`**, never in a nested object (there is
+> no `settings` wrapper like a step's `step_type_settings`). A trigger field nested anywhere,
+> sent beside `workflows_trigger`, or given an object/list value returns `422` naming it, and
+> nothing is saved. A condition left `null` matches **every** value, so read the trigger back
+> and confirm its `funnel_id` / `page_id` / other condition fields before enabling the workflow.
 
 ## Steps
 

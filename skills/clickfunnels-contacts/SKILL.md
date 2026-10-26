@@ -7,6 +7,7 @@ description: >
   cursor pagination. Includes a worked recipe for importing a contact list from
   another platform (email service provider, CRM, membership site) idempotently.
   Read contact activity and create, edit or delete Activity notes.
+  Manage contact shipping entries, their default selection and billing postal addresses.
   Reads require Contacts read access; creating, updating, tagging, unsubscribing
   and exporting require Contacts write access.
 version: "1.0"
@@ -852,3 +853,158 @@ later import of the same list can re-add the person as subscribed.
 | Deleted contact still returns 200 on fetch | `DELETE` is a soft delete | Expected. Check `deleted_at` to tell it apart, or use `gdpr_destroy` if the data must actually go. |
 | 422 on `DELETE /api/v2/contacts/{id}` | Workspace default contact, an active subscription order, or course enrollments | Read the message. Cancel the subscription, or redact instead of deleting. |
 | 404 `No such route` on redact | Path is `/gdpr_destroy`, not `/gdpr` | Use the full segment. |
+
+## Shipping and billing postal addresses
+
+Manage the same addresses shown in **Contacts > select a contact > Overview**:
+the **Shipping addresses** card has **Add shipping address**, and the
+**Billing address** card has **Change billing address**. The contact details
+also show the default shipping address, which you can select when editing the
+contact. These APIs let an integration or agent do that address maintenance.
+
+Contact payloads include a read-only `default_shipping_address_id`, null when
+unset. It appears on list, show, create, update and upsert responses, embedded
+contacts, and outgoing webhook payloads. Read the billing address from its own
+route below.
+Contact writes ignore unsupported postal fields; use the routes below to change
+addresses. Both numeric and public contact IDs are accepted in the paths.
+
+| Action | Method | Path |
+|---|---|---|
+| List shipping entries | GET | `/api/v2/contacts/{contact_id}/shipping/addresses` |
+| Create shipping entry | POST | `/api/v2/contacts/{contact_id}/shipping/addresses` |
+| Read, update, delete shipping entry | GET, PATCH, DELETE | `/api/v2/shipping/addresses/{id}` |
+| Read billing address | GET | `/api/v2/contacts/{contact_id}/billing_address` |
+| Create billing address | POST | `/api/v2/contacts/{contact_id}/billing_address` |
+| Update billing address | PATCH | `/api/v2/contacts/{contact_id}/billing_address` |
+
+Shipping lists return paginated arrays. Billing is a single resource per contact;
+there is no workspace billing-address list or billing-address delete operation.
+Reads need Contacts read access; writes need Contacts write access. Inaccessible
+contacts and addresses return 404.
+
+### Where addresses are used
+
+| Workflow | What to do | Current result |
+|---|---|---|
+| CRM sync or migration | Import shipping entries and the contact's billing address; select the intended shipping default. | The contact overview shows the imported addresses for the merchant's team. |
+| Support tool or custom customer portal | Correct a saved street or add another delivery address; set `default: true` on the chosen shipping entry. | Updates the contact's address book. New non-external orders can copy the default shipping entry when their own shipping fields are empty. |
+| Billing maintenance | PATCH the contact's billing address after a customer moves. | Updates the overview and queues Stripe customer sync plus billing-address updates for non-terminal Stripe orders. |
+
+For a shipping-address change, find the contact, list their shipping entries,
+update an existing entry or create one, then select the intended default.
+Every POST inserts a new shipping entry, so match an existing entry before
+creating one during a repeated sync. You can confirm the selection through
+`default_shipping_address_id` on the contact.
+
+Existing order, invoice and fulfillment shipping details are snapshots:
+changing a contact shipping entry does not redirect an existing shipment.
+External order imports take their own flat shipping and billing fields; the
+Orders API does not accept these address IDs. Read the address and copy its
+fields into an imported order when that is your intended workflow.
+
+Checkout prefill has a separate lifecycle. API-created shipping entries are not
+checkout-authenticated and do not automatically appear in the saved-address
+checkout prefill list. Checkout billing prefill comes from payment methods;
+updating the contact billing address does not replace a payment method's billing
+address. Do not promise automatic checkout prefill from either write.
+
+### Shipping address requests
+
+A shipping entry adds recipient names, organization, phone and default selection
+to a nested postal `address`. The entry and street each have their own `id` and
+`public_id`. Legacy entries without a street return `address: null`; API writes
+require a complete street. Create uses a `shipping_address` wrapper:
+
+```json
+{
+  "shipping_address": {
+    "first_name": "Jane",
+    "last_name": "Doe",
+    "organization_name": "Acme Inc",
+    "phone_number": "+18005550199",
+    "default": true,
+    "address": {
+      "address_one": "3443 W. Bavaria St.",
+      "address_two": "Suite 100",
+      "city": "Eagle",
+      "region": "ID",
+      "country_code": "US",
+      "postal_code": "83616"
+    }
+  }
+}
+```
+
+`address_one`, `city`, `country_code` and `postal_code` are required on create.
+Unknown country codes or region codes/names return 422; postal codes have a
+10-character limit. Unsupported and read-only fields are ignored. Responses
+return the ISO2 code as `country`, the state code as `region` and its full name as
+`region_name`. Country/region reference endpoints enumerate accepted values.
+Blank recipient names and phone fall back to the contact's values.
+
+The first shipping entry becomes default. To move the pointer, PATCH another
+entry with `{"shipping_address":{"default":true}}`. Clearing the current default
+with `default: false` returns 422. Partial street updates use the same nested
+`address` object and edit the street row in place. Deleting an entry removes its
+street too. Deleting the default clears the pointer without promoting another
+entry; new non-external orders retain the fallback to the newest remaining entry.
+
+### Contact billing address requests
+
+A contact has zero or one billing address. GET the contact's
+`/billing_address` URL: a 404 means no billing address is set when the contact
+itself is accessible. POST that same URL to create it, or PATCH it to update an
+existing address. PATCH does not create a missing address. A second POST returns
+422 with a PATCH hint.
+
+The request wrapper is `contacts_billing_address`; the contact in the URL
+determines ownership:
+
+```json
+{
+  "contacts_billing_address": {
+    "address_one": "1 Main St",
+    "city": "Boise",
+    "region": "ID",
+    "country_code": "US",
+    "postal_code": "83702"
+  }
+}
+```
+
+Billing uses the same street fields and geography rules as shipping. PATCH
+accepts partial street fields. Responses include read-only `id`, `public_id`
+and `contact_id`, plus the postal fields. Owner-type and owner-ID fields are
+not part of either address payload. Unsupported/read-only input is ignored;
+invalid writes are atomic.
+
+These routes manage contact billing only. Fulfillment locations, marketing
+settings and payment-method billing addresses retain their own APIs or provider
+flows. Sender email addresses are a separate resource.
+
+### MCP address operations
+
+In the Contacts category, `shipping_address` supports list, fetch, create,
+update and destroy. For shipping list/create, pass the contact's public ID as
+`parent_id`; member operations use the shipping entry's public `id`.
+
+`contact_billing_address` supports fetch, create and update. It is a contact
+singleton: always pass the contact's public ID as `parent_id`, omit `id`, and
+pass only the street fields as flat `attributes`. For example:
+
+```json
+{
+  "resource": "contact_billing_address",
+  "workspace_id": "workspace-public-id",
+  "parent_id": "contact-public-id",
+  "attributes": {
+    "city": "Eagle"
+  }
+}
+```
+
+Use that argument object with `update` to correct the billing city. Use
+`fetch` without `attributes` to check whether an address exists, or `create`
+with a complete street when it does not. Always pass the consented
+`workspace_id`.

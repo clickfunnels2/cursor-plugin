@@ -408,9 +408,13 @@ longer attached to any step). When both are sent, the swap wins.
 
 ## Crawler access (AI opt-out)
 
-Four independent booleans on every internal page control which automated
-visitors may read it. They are returned on every page response and writable on
-create and update.
+Four independent booleans on every internal and custom HTML page control which
+automated visitors may read it. They are returned on every page response and
+writable on create and update. On a custom HTML page they are writable on update
+only: create the page, then `PATCH` the flags. They act on the page's URL (the
+domain's `sitemap.xml` and `robots.txt`), not its body, so they work the same on
+HTML you supplied. A funnel step page with `seo_index: true` is listed in its
+domain's `sitemap.xml`.
 
 | Field | `true` means | Example user agents |
 |---|---|---|
@@ -459,18 +463,15 @@ PATCH /api/v2/pages/:page_id   # once per page
 ### Coverage limits
 
 A block is expressed as `Disallow` rules in the domain's `robots.txt`, built
-from the paths ClickFunnels can currently resolve for the page.
+from every path ClickFunnels serves the page at on that domain:
 
-Today that means the **funnel step paths** of a page that is a step in a funnel.
-Coverage is narrower than you might expect, in two ways:
+- the page's own URL (its page-level `current_path`),
+- its **funnel step paths**, when it is a step in a funnel,
+- `/`, when it is the site's home page.
 
-- A page that is not a funnel step - a standalone landing page, site page,
-  theme/template page, blog or course page - contributes **no rules at all**.
-- Even for a funnel page, only its step paths are covered. The page's own direct
-  URL (its page-level `current_path`) also serves the page, and is **not** listed.
-
-In both cases the preference is stored and reads back correctly, and it begins
-taking effect as path resolution is extended, with no further action from you.
+A page that ClickFunnels serves only through another resource's URL (a theme or
+template page other than the home page, a blog or course page) contributes **no
+rules**. Its preference is stored and reads back correctly, but nothing enforces it.
 
 So do not read a `200` as proof that a page is blocked. To confirm, fetch the
 domain's `/robots.txt` and look for the specific path you care about under the

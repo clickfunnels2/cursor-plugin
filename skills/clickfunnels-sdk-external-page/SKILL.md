@@ -73,6 +73,17 @@ two different pages. For a single-page app that swaps routes without a full
 navigation, update the `content` attribute when the active "page" changes - the
 SDK observes the meta tag and re-initializes against the new token.
 
+The SDK also re-initializes when the URL changes in place (`history.pushState`,
+`history.replaceState`, or a back/forward `popstate`), because the token and the
+page URL together identify the page. So before you navigate to a route that is
+not a ClickFunnels page, remove the `cf-page-token` meta tag (or swap in that
+route's own token). With no token the SDK does not initialize or track that route,
+and picks up again when a token reappears. If the old token is left in place, the SDK
+initializes the old page again at the new URL. While the funnel is live that is
+rejected (`url_mismatch`, a 403 in the console) and the SDK unbinds its forms on
+that route; while the funnel is in test mode it is accepted as a preview, so
+forms on that route would submit as the old page.
+
 ### 2. The SDK script
 
 Load the SDK once per page. Anywhere on the page works (it discovers and

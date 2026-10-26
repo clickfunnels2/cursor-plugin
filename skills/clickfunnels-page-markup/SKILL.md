@@ -104,7 +104,9 @@ refused, the edit belongs in the editor, not in this API.
 ```
 
 **Critical nesting:** section -> row -> column -> content. Never skip a level.
-**Colors:** #hex only. No rgba(), no named colors.
+**Colors:** #hex is the default choice; `rgb()`/`rgba()` also work in the color
+attributes (text `color`, `bg`, `iconcolor`, border colors). `bg` also takes
+gradients. The one exception is `<whop-checkout>`, whose colors are hex only.
 **fontsize:** Must include unit - "72px" not "72".
 
 ## Choosing a Design Style
@@ -194,9 +196,64 @@ These are the DSL parser errors returned at validate time. HTTP-level errors
 
 ### Page Structure
 
-  A page is a flat sequence of <section> elements.
+  A page is a sequence of top-level <section> elements.
   Each section is a full-width horizontal band.
   Sections stack vertically top to bottom.
+
+### Nesting containers
+
+  A <column> may contain another <section> (the editor's "nested rows"),
+  with its own <row>s and <column>s, and nested sections may nest again.
+  Use one for a card that needs its own rows, or for stacked cards spaced
+  with margintop.
+
+  A <flex> may sit inside a <column> or inside another <flex>.
+
+  Never put a <row> directly inside another <row> (the inner row and its
+  content are lost). To nest rows, wrap them in a <section> inside the
+  column, as below.
+
+    <column bg="#ffffff" radius="lg">
+      <section padding="24">
+        <row cols="2">
+          <column>...</column>
+          <column>...</column>
+        </row>
+      </section>
+    </column>
+
+### Attributes every element accepts
+
+  id            Becomes the element's HTML id on the published page (a leading
+                "#" is dropped). Use it for custom CSS/JS, and as the target of
+                a button's scroll-target.
+  rotate        Rotation in degrees: "9", "-2.5" or "9deg". Anything else is a 400.
+  align-self    flex-start | center | flex-end | stretch | baseline. How the
+                element sits across its flex parent.
+  grow          flex-grow, e.g. "1"
+  shrink        flex-shrink, e.g. "0"
+  basis         flex-basis: "25%", "300px". On a <column>, basis sets the
+                column's share of the row, so `basis="25%"` and `basis="75%"`
+                give uneven columns (they still stack on mobile).
+
+  On <customhtml> only `id` takes effect, and <saved-section> applies none
+  of these (so a saved section cannot be a scroll-target); the validator
+  accepts them there but they are dropped.
+
+  nid, relative-to, action
+                Internal. The ClickFunnels AI editor uses them to patch
+                existing elements. A `markup` write through the API accepts
+                them and ignores them; do not send them.
+
+  Animation attributes are accepted on section, headline, subheadline,
+  paragraph, list, button, image, video and accordion:
+
+  animation          fade-in | glide-in | expand-in | bounce-in | fold-in |
+                     puff-in | spin-in | reveal | flip-in | slide-in |
+                     turn-in | float-in (any other value is ignored)
+  animation-trigger  scroll (default) | load
+  animation-time     duration in ms, 100-2000 (default 500)
+  animation-delay    delay in ms, 0-2000 (default 0)
 
 
 ================================================================================
@@ -208,16 +265,27 @@ These are the DSL parser errors returned at validate time. HTTP-level errors
   Full-width container. Top-level page band.
 
   Attributes:
-    bg              #hex color or CSS gradient string
+    bg              Any CSS background value: #hex, rgb()/rgba(), a gradient
+                    preset name, a CSS gradient string, or layers such as
+                    "url(https://...) center/cover, #0f172a". It is stored
+                    as written.
     bgimage         Background image URL
     bgprompt        AI-generated background - describe in plain English
                     e.g. bgprompt="dark geometric grid pattern, subtle blue glow"
     padding         "vertical horizontal" px. Default "80 20". Single value = all sides.
     padding-mobile  Same format, applies at <=770px. Default "56 16"
-    shadow          sm | md | lg
-    radius          sm(4px) | md(8px) | lg(16px) | xl(24px)
-    border          thin | medium | thick
-    opacity         0-100
+    paint           Style guide paint theme for the text, link and icon colors inside:
+                    none | lightest | light | colored | dark | darkest. Default lightest
+    shadow          sm | md | lg, or one CSS box-shadow in px: optional inset, x, y,
+                    optional blur and spread, then a color. "0 10 30 -5 rgba(0,0,0,0.5)",
+                    "inset 0 2 6 #000000"
+    radius          sm(4px) | md(8px) | lg(16px) | xl(24px) | full, or a CSS
+                    border-radius value: "12px", or per corner "10px 0 10px 0"
+    border          thin | medium | thick, or "width color" / "width style color"
+                    with width in px: "2 #333333", "1 dashed rgba(0, 0, 0, 0.2)"
+    opacity         0-100 (a 0-1 fraction also works)
+    margintop       Space above the section, when it is nested in a column
+                    (also: margintop-mobile)
     id              CSS/JS targeting
 
   Examples:
@@ -225,14 +293,28 @@ These are the DSL parser errors returned at validate time. HTTP-level errors
     <section bg="linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)" padding="120 40">
     <section bg="midnight" padding="80 20">  <- gradient preset by name
 
+  `bg` and the color attributes also accept a CSS variable, such as one of the
+  workspace palette's `var(--color-...)` slots, and keep the page linked to the
+  palette. PML has no way to look slot names up, so only use a variable you
+  have read back from the page's existing markup.
+
 ### <row>
 
   Horizontal column divider within a section.
 
   Attributes:
-    cols            1-12. Omit or use 1 for single centered column.
+    cols            1-6. Omit it and the row gets one column per <column>
+                    child. Columns are equal width, except cols="5", which
+                    makes the first column twice as wide as the other four.
+                    Values above 6 are not supported and fail the write.
+                    For content, 1-4 columns read best.
+    columnsheight   full (default) | auto. "full" stretches every column to
+                    the tallest one; "auto" sizes each to its content.
+    bg, shadow, radius, border, opacity
+                    Same values as on <section>
     padding         Same format as section
     padding-mobile
+    paint           Same values as section. Default none
     id
 
   Typical values:
@@ -241,42 +323,60 @@ These are the DSL parser errors returned at validate time. HTTP-level errors
     <row cols="3">  three-column feature grid
     <row cols="4">  four-column stat strip
 
+  For uneven widths, set `basis` on the columns (see "Attributes every
+  element accepts"):
+    <row cols="2">
+      <column basis="30%">...</column>
+      <column basis="70%">...</column>
+    </row>
+
 ### <column>
 
   Content container. NO padding attribute (use section/row padding instead).
 
   Attributes:
-    bg              Background color or gradient (for card-style columns)
-    shadow          sm | md | lg
-    radius          sm | md | lg | xl
-    border          thin | medium | thick
-    opacity         0-100
+    bg              Same values as on <section>, e.g. a card color, a gradient,
+                    or an image over a color: "url(https://...), #ffffff"
+    paint           Same values as on <section>. Default none
+    shadow          Same values as on <section>
+    radius          Same values as on <section>
+    border          Same values as on <section>
+    opacity         0-100 (a 0-1 fraction also works)
     marginhorizontal        px (left/right buffer on column content)
     marginhorizontal-mobile
+    basis, grow, shrink, align-self
+                    Column width and alignment within the row (see above)
     id
 
 ### <flex>
 
-  Flexbox for horizontal layouts only. Place inside <column>.
+  Flexbox container. Place it inside a <column> or inside another <flex>.
 
   Attributes:
-    direction       Always "row" (do NOT use "column" - that's a layout antipattern here)
+    direction       row (default) | column | row-reverse | column-reverse
     justify         flex-start | center | flex-end | space-around | space-between | space-evenly
     align           flex-start | center | flex-end | baseline | stretch
     gap             px between items. e.g. "16"
     width           "100%" | "400px"
     height          "auto" | "60px"
-    wrap            nowrap | wrap | wrap-reverse
+    wrap            nowrap (default) | wrap | wrap-reverse
     padding         Same format as section
+    bg, shadow, radius, border, opacity
+                    Same values as on <section>
     margintop       px spacing above the flex container (also: margintop-mobile)
 
-  Mobile variants: direction-mobile, justify-mobile, align-mobile, wrap-mobile
+  Mobile variants (applied at <=770px): direction-mobile, justify-mobile,
+  align-mobile, wrap-mobile. Each takes the same values as its desktop
+  attribute; `wrap-mobile` defaults to the desktop `wrap`. A common pattern is
+  a row on desktop that stacks on phones:
 
-  Example:
-    <flex direction="row" justify="center" gap="16" wrap="nowrap">
+    <flex direction="row" direction-mobile="column" justify="center" gap="16">
       <button bg="#6366f1">Primary</button>
       <button bg="transparent" color="#6366f1">Secondary</button>
     </flex>
+
+  Children of a flex can size and align themselves with grow, shrink, basis
+  and align-self.
 
 
 ================================================================================
@@ -286,14 +386,20 @@ These are the DSL parser errors returned at validate time. HTTP-level errors
   All text elements share:
     size        xl(48px) | l(40px) | m(32px) | s(24px)
     fontsize    Custom size, overrides preset. Must include unit: "72px" "5rem" "100px"
+    fontsize-mobile  Size at the mobile breakpoint (<=770px), same format as fontsize.
+                Set it whenever you set fontsize: otherwise the style guide's mobile
+                size for the preset applies at <=770px, not fontsize.
     align       left | center | right
-    align-mobile  left | center | right, at the mobile breakpoint (≤770px)
-    color       #hex only (no rgba, no named colors)
+    align-mobile  left | center | right, at the mobile breakpoint (<=770px)
+    color       #hex or rgb()/rgba()
     font        Google Font name (see full list below)
-    weight      thin|light|normal|medium|semibold|bold|extrabold|black
+    weight      thin|light|normal|medium|semibold|bold|extrabold|black,
+                or a numeric weight such as "650"
     transform   uppercase | lowercase | capitalize
-    leading     tight | snug | normal | relaxed | loose
-    spacing     tight | normal | wide | wider | widest
+    leading     none | tight | snug | normal | relaxed | loose, or a raw
+                line-height such as "1.4" or "140%"
+    spacing     tighter | tight | normal | wide | wider | widest, or a raw
+                letter-spacing such as "0.05em"
     margintop   spacing above this element: px (a number) or %; rem/em are converted to px
     margintop-mobile
     id
@@ -364,9 +470,11 @@ These are the DSL parser errors returned at validate time. HTTP-level errors
 
 ### Inline Formatting
 
-  Works inside all text elements:
+  Works inside all text elements, and inside list and accordion <item> text:
     <b>bold</b>
     <i>italic</i>
+    <u>underline</u>
+    <s>strikethrough</s>
     <span color="#f59e0b">colored text</span>
     <span bg="#fef3c7" color="#92400e">highlighted</span>
     <a href="https://example.com/terms" target="_blank">a link</a>
@@ -375,12 +483,16 @@ These are the DSL parser errors returned at validate time. HTTP-level errors
 ### Text encoding (non-ASCII characters)
 
   Type accented letters and punctuation as their literal UTF-8 characters
-  (umlauts, accents, em dash, curly quotes, arrows). Do NOT use HTML character
-  entities such as &mdash;, &rarr;, &nbsp;, or &amp; inside text - they are not
-  decoded on a page and render literally (e.g. "&mdash;" shows up verbatim) or
-  are dropped entirely. Write the em dash character itself, "und" instead of
-  "&amp;", and so on. (Raw HTML inside <customhtml> is the one exception - there,
-  normal HTML entities work.)
+  (umlauts, accents, em dash, curly quotes, arrows) - that is the simplest form.
+  Entities also work, in text and in attribute values: &amp;, &lt;, &gt;,
+  &quot;, HTML named entities (&copy;, &nbsp;, &mdash;) and numeric references
+  (&#169;, &#x2192;) are decoded to the character. A bare "&" that does not
+  start an entity is kept as a literal "&" (Tom & Jerry, R&D,
+  href="https://example.com/?a=1&b=2"), and a "<" that cannot start a tag
+  (a < b) is kept as a literal "<"; write &lt; when the text after it is a
+  letter. Markup read back from a page escapes "&" and "<" (and '"' in
+  attribute values), so it can be sent again unchanged. Raw HTML inside
+  <customhtml> is kept exactly as written.
 
 
 ================================================================================
@@ -396,6 +508,9 @@ These are the DSL parser errors returned at validate time. HTTP-level errors
     align     left | center | right
     width     "50%" | "300px" | "100%"  (prefer % for responsiveness)
     height    "auto" | "300px"
+    fit       cover | contain | fill | none | scale-down (CSS object-fit).
+              With a fixed height the default is cover, which crops; use
+              contain to show the whole image.
     radius    sm | md | lg | xl | full | "20px"
 
   Prompts - be specific for quality:
@@ -432,19 +547,43 @@ These are the DSL parser errors returned at validate time. HTTP-level errors
 ### <button>
 
   Attributes:
-    bg            Solid #hex, gradient string, or gradient preset name
+    bg            Solid #hex or rgb()/rgba(), gradient string, or gradient preset name
                   Presets: sunset | ocean | forest | fire | midnight | royal | peach | sky
-    color         Text color (#hex)
+    color         Text color (#hex or rgb()/rgba())
     font          Google Font name
     fontsize      "18px" etc.
     fontsize-mobile
     radius        sm | md | lg | xl | full | "8px"
+    width         "100%" for a full-width button, or "auto"
     align         left | center | right
     style-guide   style1 | style2 | style3 (visual preset themes)
+    margintop     px spacing above the button (also: margintop-mobile)
     href          URL to link the button to; renders as an anchor. Use for a
                   navigation CTA (e.g. "Book a call", a link to another page, or
                   an in-page anchor like "#pricing"). Do NOT set href on an
                   opt-in / form-submit button - that button submits the form.
+                  href also takes the editor's button actions (below).
+    target        "_blank" to open href in a new tab (default "_self")
+    scroll-target The id of an element on this page; clicking scrolls to it.
+                  The element must carry that id in the same markup:
+                  <section id="pricing">...</section>
+                  <button scroll-target="pricing">See Pricing</button>
+                  Prefer this to writing a "#scroll-..." href yourself.
+    submit-go-to  With href="#submit-form": a URL to send the visitor to after
+                  the form submits, instead of the funnel's next step.
+
+  A button has no `border` attribute (sending one is a 400).
+
+  Button actions - set href to one of these values:
+    #submit-form            Submit the opt-in form on this page
+    #submit-oto             One-click upsell on an upsell/downsell funnel step.
+                            The product the button sells is picked in the
+                            editor (button action "1 Click Upsell"); PML
+                            cannot set it, and until it is set a click does
+                            nothing.
+    ?next_funnel_step=true  Go to the next step of the funnel
+    #open-popup             Open the page's popup
+    #close-popup            Close the popup
 
   CTA best practices:
     - Use high-contrast: if bg is dark, accent should POP (orange, coral, bright blue)
@@ -466,6 +605,9 @@ These are the DSL parser errors returned at validate time. HTTP-level errors
     type          name | first_name | last_name | email | phone_number |
                   shipping_address | shipping_city | shipping_state |
                   shipping_country | shipping_zip | text
+                  "phone" is read as phone_number and "full_name" as name.
+                  Any other value (including "text") makes a custom field,
+                  saved to a contact custom attribute named after the label.
     placeholder   Hint text
     required      "true" | "false"
     width         "100%" | "300px"
@@ -497,11 +639,18 @@ These are the DSL parser errors returned at validate time. HTTP-level errors
   Icon list for benefits, features, bullet points.
 
   Attributes:
+    type        ordered for a numbered list (the numbers take iconcolor);
+                omit it for an icon list
     icon        check | star | heart | arrow | plus | bolt | thumbsup | circle
-    iconcolor   #hex for icon color
-    size        s | m | l
+                (icon lists only)
+    iconcolor   Icon (or number) color
+    size        s | m | l - the style guide's body text size (default m,
+                which the markup read-back leaves out)
     color       Text color
     font        Google Font name
+
+  A list also takes the text attributes shared by headline and paragraph
+  (align, weight, transform, leading, spacing).
 
   <list icon="check" iconcolor="#10b981" size="m" color="#e2e8f0" font="Inter">
     <item>First benefit - be specific, not vague</item>
@@ -553,6 +702,10 @@ These are the DSL parser errors returned at validate time. HTTP-level errors
   DO NOT use for: text, buttons, images, lists, cards, layout, spacing.
   Only use for: custom widgets, third-party embeds, CSS animations.
 
+  The body is kept as written: class, data-* and style attributes, <style>
+  and <script> tags all reach the page unchanged. <customhtml> takes no
+  attributes of its own beyond the ones every element accepts.
+
   <customhtml>
     <style>
       .badge { background: #7c3aed; color: #fff; padding: 4px 12px;
@@ -565,6 +718,21 @@ These are the DSL parser errors returned at validate time. HTTP-level errors
 
   Reference a saved/universal section by ID.
   <saved-section ref="SECTION_ID"/>
+
+### Page-level CSS, head and footer code (not PML)
+
+  Page-wide CSS and scripts are not markup. A page has three fields beside
+  `markup` - `custom_css` (raw CSS, no <style> wrapper), `head_code` and
+  `footer_code` - set through the Pages API (see the Pages Skill). Each takes
+  a matching mode, `custom_css_mode`, `head_code_mode` and `footer_code_mode`:
+
+  - `append` (default) adds your value after what is already there.
+  - `replace` swaps the stored value for yours.
+  - Sending the field as `null` clears it, whatever the mode.
+  - Sending `""` in append mode changes nothing.
+
+  Element ids you set in PML reach the published HTML, so `custom_css` can
+  target them (`#hero { ... }`).
 
 
 ================================================================================
@@ -579,6 +747,10 @@ These are the DSL parser errors returned at validate time. HTTP-level errors
                                            Supports steps="1|2|3" (default 1)
                                            Renders the products attached to the
                                            page's show_page_step.
+                                           It is NOT the upsell surface: on an
+                                           upsell/downsell (one-click) step, use
+                                           a <button href="#submit-oto"> (see
+                                           <button>) instead of a <checkout/>.
   <order-summary linked-checkout-id="N"/> Cart + totals (link to checkout id)
   <whop-checkout/>                         Whop embedded checkout (see below)
   <confirmation/>                          Order confirmation display
@@ -657,7 +829,7 @@ These are the DSL parser errors returned at validate time. HTTP-level errors
 ## 9. GRADIENT PRESETS
 ================================================================================
 
-  Use as bg value on <section>, <column>, or <button>:
+  Use as bg value on <section>, <row>, <column>, <flex> or <button>:
 
   Name        Approx direction   Colors
   ---------------------------------------------------------
@@ -1060,8 +1232,8 @@ These are the DSL parser errors returned at validate time. HTTP-level errors
   x padding attribute on <column> elements
 
   Colors:
-  x rgba() in any color attribute - hex only
-  x Named CSS colors ("red", "blue") - hex only
+  x Named CSS colors ("red", "blue") - use #hex or rgba()
+  x rgb()/rgba() or a CSS variable in <whop-checkout> accent/background - hex only there
   x More than one accent color family per page (pick one, use it consistently)
 
   Typography:
@@ -1070,8 +1242,9 @@ These are the DSL parser errors returned at validate time. HTTP-level errors
   x fontsize without unit - "72" fails, "72px" works
 
   Layout:
-  x <flex> for vertical layouts (flex direction="column" is not supported)
-  x cols > 4 for content columns (layout grids can use more; content max is 4)
+  x cols above 6 (not supported); for content, more than 4 columns gets cramped
+  x <flex direction="row"> holding several wide items with no direction-mobile
+    or wrap-mobile (they stay in one line on phones)
   x Padding "120" on mobile (set padding-mobile="60 20" for mobile comfort)
 
   Performance:
@@ -1429,7 +1602,7 @@ These are the DSL parser errors returned at validate time. HTTP-level errors
         <button bg="#ef4444" color="#ffffff" font="Roboto" fontsize="18px" radius="none" align="center">
           Buy Now - $189
         </button>
-        <button bg="transparent" color="#ef4444" font="Roboto" fontsize="18px" radius="none" border="medium" align="center">
+        <button bg="#1f2937" color="#ffffff" font="Roboto" fontsize="18px" radius="none" align="center">
           See It In Action
         </button>
       </flex>
@@ -1548,7 +1721,7 @@ These are the DSL parser errors returned at validate time. HTTP-level errors
   [ ] No <row> nested inside another <row>
 
   Colors:
-  [ ] All colors are #hex (no rgba, no named colors)
+  [ ] Colors are #hex or rgb()/rgba() (no named colors; hex only in <whop-checkout>)
   [ ] Gradient presets used by name OR full CSS gradient string
 
   Typography:
@@ -1567,7 +1740,12 @@ These are the DSL parser errors returned at validate time. HTTP-level errors
   [ ] Hero section padding >= 100px
 
   <flex>:
-  [ ] Only used with direction="row" (horizontal layouts only)
+  [ ] A row-direction flex with several items sets direction-mobile or
+      wrap-mobile, so it does not overflow on phones
+
+  Attributes:
+  [ ] Every <row> has cols between 1 and 6, and no more <column> children than cols
+  [ ] No <button> carries a `border` attribute
 
 
 ================================================================================

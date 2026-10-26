@@ -6,7 +6,7 @@ description: >
   in full, or abandon an unpaid invoice to stop its automatic payment retries. Use this skill
   when you need to extend or shorten a trial, shift a billing date, cancel a subscription,
   stop a rebill, issue a refund, halt retry attempts, or read orders, invoices, and
-  transactions through the API.
+  transactions through the API, including telling an order an AI agent sent.
 version: "1.3"
 author: ClickFunnels
 tools:
@@ -45,6 +45,7 @@ Each action has its own subject, and picking the right one matters:
   example an insufficient-funds decline where you want to grant a few days' grace instead of
   canceling or refunding).
 - Read an order and its invoices/transactions to decide which action applies.
+- Tell whether an order came through an AI agent's checkout link.
 
 For moving a subscription onto a different plan without cancelling, use the
 [subscription-changes](https://accounts.myclickfunnels.com/.well-known/subscription-changes/skill.md) skill instead.
@@ -183,6 +184,13 @@ immediate Payments AI cancel can first return `service_status: "canceled"` with 
 later `GET`. Poll `GET /api/v2/orders/:id` when those fields are not yet populated. The supplied
 `canceled_by` value is persisted before that sync and remains stable.
 
+A Payments AI subscription with `service_status: "pending"` and `billing_status: "abandoned"`
+is voided immediately because it never activated, even if you send
+`effective_date: "next_renewal"`. The response has terminal `service_status: "voided"`, with no
+`canceled_at` or `churned_at` and no `subscription.canceled` webhook. Treat `voided` as success
+and stop polling for cancellation fields. Voiding also voids the subscription's outstanding
+invoices, even when `voidable_invoices: []` is supplied.
+
 ```json
 {
   "id": 33478,
@@ -288,6 +296,21 @@ Authorization: Bearer YOUR_TOKEN
   "currency": "USD"
 }
 ```
+
+## Orders placed through an AI agent
+
+An AI agent can send a buyer to a site's checkout through
+`https://<site domain>/agent/checkout?product=<id>&ref=agent:<agent name>` (see
+[Selling through AI agents](https://accounts.myclickfunnels.com/.well-known/products/skill.md#selling-through-ai-agents)).
+The buyer pays on the site's normal checkout, so the result is an ordinary order
+with no special status or field. The agent's `ref` becomes the UTM source of the
+visit that led to the order:
+
+- `visits.last_visit_with_utm.utm_source` on `GET /api/v2/orders/:id` is
+  `agent:<agent name>`, and `utm_medium` is `agent`.
+- The orders list has no filter for it; read `visits` on each order.
+- The link always starts a new visit, so this holds even when the buyer browsed
+  the site earlier. That earlier visit stays the contact's first visit.
 
 ## Worked example - cancel then confirm
 

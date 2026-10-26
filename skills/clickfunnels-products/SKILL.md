@@ -7,7 +7,8 @@ description: >
   (percentage or fixed amount, workspace-wide or scoped to specific products/variants),
   and attaching products to funnel pages so a checkout can sell them. Use this skill when
   setting up something to sell programmatically: a membership, a course offer, an
-  order-form product, a launch discount code, or when changing an existing product's price.
+  order-form product, a launch discount code, or when changing an existing product's price,
+  or when checking which products a site offers AI agents to buy.
 version: "1.0"
 author: ClickFunnels
 tools:
@@ -21,6 +22,8 @@ references:
     description: Sell the attached products from an externally-hosted page via the SDK.
   - path: https://accounts.myclickfunnels.com/.well-known/subscription-changes/skill.md
     description: Change the variant/price of an existing subscription line item.
+  - path: https://accounts.myclickfunnels.com/.well-known/orders/skill.md
+    description: Tell an order an AI agent sent through a site's checkout link.
 ---
 
 # ClickFunnels Products & Discounts Skill
@@ -41,6 +44,7 @@ sale, instead of hard-coding a discounted price.
 - Change the price of a product that has already been sold (repricing).
 - Attach or detach products on a funnel page's checkout step.
 - Understand why editing a price returns 422 after the first order.
+- Check which products a site offers AI agents to buy, and why one is missing.
 
 ## Authentication
 
@@ -428,6 +432,47 @@ Content-Type: application/json
 
 Read back what a step sells via `GET /api/v2/pages/:id` - the response's
 `show_page_step.products` lists the attached products.
+
+## Selling through AI agents
+
+A published site can answer on its own domain with documents that let an AI
+agent buy from it for a person. No API call sets this up:
+
+| Path on the site's domain | What it returns |
+|---|---|
+| `/llms.txt` | Markdown: what the site sells, with exact prices and a buy link per product |
+| `/skill.md` (also `/.well-known/skill.md`) | The purchase steps, as an agent skill |
+| `/.well-known/agent.json` | The same catalog as JSON |
+| `/agent/checkout?product=<id>` | A redirect to that product's checkout on the site: its order page with the product selected, or for a store product its product page |
+
+A product is listed when all of these hold:
+
+- It is not archived and has at least one price that is visible and not archived.
+- It is attached to an order page of a funnel on that site that takes live payments,
+  or shown in the store. Store products are listed on the workspace's default site
+  only. A funnel in test mode is never listed, because its checkout only accepts
+  test cards.
+- For a funnel product: the order page has not opted out of AI access (any of
+  `block_ai_assistant`, `block_ai_search` or `block_ai_crawler`, see
+  [Crawler access](https://accounts.myclickfunnels.com/.well-known/pages/skill.md#crawler-access-ai-opt-out)), and the
+  funnel has not been taken down.
+
+The listed prices are the ones the destination sells: the prices selected on the
+order page's step for a funnel product, the prices of the variants a buyer can pick
+for a store product. A site lists at most 50 products.
+
+`/agent/checkout` accepts a product id or a variant id. It never charges anyone and
+creates nothing; the buyer enters their details and pays on the checkout page.
+`ref=agent:<name>` records the order's source, see
+[Orders placed through an AI agent](https://accounts.myclickfunnels.com/.well-known/orders/skill.md#orders-placed-through-an-ai-agent).
+
+The site owner can switch all of this off per site, under Site settings > Site
+availability > Agent access. A site that does not offer it answers `404` on all
+four paths.
+
+To make a product buyable this way, give it a visible price and attach it to an
+order page of a live funnel (or show it in the store), then confirm with an
+unauthenticated `GET https://<site domain>/.well-known/agent.json`.
 
 ## Worked example - a paid membership, end to end
 

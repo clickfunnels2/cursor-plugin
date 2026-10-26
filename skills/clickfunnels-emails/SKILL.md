@@ -611,7 +611,9 @@ Content-Type: application/json
 
 Returns **201 Created** with the send action; it runs asynchronously, so fetch it
 at `GET /api/v2/emails/broadcasts/send_actions/{id}` for `started_at`/`completed_at`.
-`DELETE /api/v2/emails/broadcasts/send_actions/{id}` cancels a scheduled send.
+`DELETE /api/v2/emails/broadcasts/send_actions/{id}` cancels a scheduled send: the
+broadcast returns to `draft` with all of its send actions removed, so create a new
+send action to send or reschedule it. Once sending has started it returns 422.
 
 To hear when a send finishes instead of polling, subscribe a V2 webhook endpoint
 (`POST /api/v2/workspaces/{workspace_id}/webhooks/outgoing/endpoints`) to

@@ -10,8 +10,8 @@
     {
       "name": "clickfunnels-contacts",
       "url": "https://accounts.myclickfunnels.com/.well-known/contacts/skill.md",
-      "digest": "sha256:f3eb8ee8fc31aad6d263a283c5f04305105c6b58c75692e1b1df16f57266acb3",
-      "sha256": "9cb6c1d3bf07fa20646346ae2c9ecbbfb871dab2193c4f9110ef0c37caf43d13"
+      "digest": "sha256:433f60a2a19f3c16b9ae1b4eab7344434c380abf1a9acd6a16f01fc2389c630c",
+      "sha256": "a05c474f19b42f2e04420979f60e31dafa4c8794b0ff56f0df472d5dc79e13af"
     },
     {
       "name": "clickfunnels-courses",
@@ -22,8 +22,8 @@
     {
       "name": "clickfunnels-emails",
       "url": "https://accounts.myclickfunnels.com/.well-known/emails/skill.md",
-      "digest": "sha256:c9d910b00c3cd7108b1f46a3a3cb9febdcca5f8fe6fe40036c3dd9c1bc9e033d",
-      "sha256": "5ba343044d98ad1cb57d8be554d5731e47a353c693e0e1e65ca81b356c144ed3"
+      "digest": "sha256:c38bbcf1c50f152ae4cd473c9c6f2e9cd578fa4427df338083be72aea4ac934f",
+      "sha256": "e9c7d43763ef171c9d0b41409d9e426bded06a588ab6a33fa939350b375096bd"
     },
     {
       "name": "clickfunnels-external-purchases",
@@ -52,26 +52,26 @@
     {
       "name": "clickfunnels-orders",
       "url": "https://accounts.myclickfunnels.com/.well-known/orders/skill.md",
-      "digest": "sha256:33e17cb0806cfabafb2f4c6afa624986fd7c97498b5da1480d1efbae13950041",
-      "sha256": "2de703351385506a1e7c1eabde3273bd5ced1bae5dd6264957c5fa10880b5e07"
+      "digest": "sha256:7f94220acccacc31e1844cc746db0071eaca46ae6c2da15b0ad6d18078901bdc",
+      "sha256": "de290ea6bb008ce7a855124caeb7c607d37c9a3e970aacd898ffa7573859e6e1"
     },
     {
       "name": "clickfunnels-page-markup",
       "url": "https://accounts.myclickfunnels.com/.well-known/page-markup/skill.md",
-      "digest": "sha256:a7c416cbdac4c95d9b3d829d19897c5cf1b9daec283b2e562eb6819731e21ae9",
-      "sha256": "1fabf99166f390d450cee40228fdd30245cb57ffdfbb9afa3fb8ce8fffc61d9f"
+      "digest": "sha256:fbcd0e401cf8d04853b1d730490056c7dbeedc898a68a93a77782ca18d051b0b",
+      "sha256": "5ae0e2f5eb58dc5e54f2dd398367716c5b490856787ad8f6bc4640984cbc3d48"
     },
     {
       "name": "clickfunnels-pages",
       "url": "https://accounts.myclickfunnels.com/.well-known/pages/skill.md",
-      "digest": "sha256:edcbb22a33debbb6d565ad26f22ba25ed230e0792cea1562c8b5337cd7e5d120",
-      "sha256": "e82e4e0b4e48aab1af0676b9a70a084e54bd82c17bf5600af49b8fee59b339ef"
+      "digest": "sha256:7eea34cf3a1dfacc5a0bb8807104ec1e3ecf1cb32baba390d30ee15b00f6adbd",
+      "sha256": "0536e77c2dcc33c3d4dbd451e5d4396783fa95cfe0678e0023f3e780204154c4"
     },
     {
       "name": "clickfunnels-products",
       "url": "https://accounts.myclickfunnels.com/.well-known/products/skill.md",
-      "digest": "sha256:b867b128cd8213b7f0419f8427d85c389aaf6c736c7aebf47a66165543eb6623",
-      "sha256": "4fb053a74cc89ccd37d1d57df73b983adccbfc87e74d0cf6848d68f86286580d"
+      "digest": "sha256:4b69a236a8c800f2521311cfb0246d0d16f244f029ad5fda82af8e94879e7297",
+      "sha256": "1eabac0800a76213e69245dc9c653a8581c8f5502713b4808ee948f5c20b76ec"
     },
     {
       "name": "clickfunnels-refine-filters",
@@ -88,8 +88,8 @@
     {
       "name": "clickfunnels-sdk-external-page",
       "url": "https://accounts.myclickfunnels.com/.well-known/sdk/create-external-page/skill.md",
-      "digest": "sha256:527b1c1103180cea4aa123307cb88364622dcd16419eeffc03b89cc5cf87ccef",
-      "sha256": "ac6601669c1db0e44bd21a76e8bc53a0e272062b1bb4ec92fbe4ae4a3810b70f"
+      "digest": "sha256:78052ad002bd5fd83950eef1eda91ed2789f2eae038beaaa25b5ebf73928b408",
+      "sha256": "2093258a323864f1f365bd2ac33f22e1792039f018f49848a493309f496694ad"
     },
     {
       "name": "clickfunnels-sdk-migrate-external-page-domain",
@@ -112,8 +112,8 @@
     {
       "name": "clickfunnels-workflows",
       "url": "https://accounts.myclickfunnels.com/.well-known/workflows/skill.md",
-      "digest": "sha256:b2c072b194edb2aad69c5311441c7743d6290574168245bef93cac21148f830c",
-      "sha256": "be4104ffd35012fee97744069e4c9a2516207c84924dfcea2a3fe6413a558648"
+      "digest": "sha256:ab2078ae341d74eefe477a59621102ce99cdd3276590bb91ff17d5a8c6335385",
+      "sha256": "4bfcb056c35db7cc221eed254f5274360d5900ba4dfc2bcff17631d864e6601c"
     }
   ]
 }
