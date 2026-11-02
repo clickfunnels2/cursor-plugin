@@ -164,6 +164,11 @@ Content-Type: application/json
   persists nothing, and returns a one-time `stable_id` token.
 - `save: true` persists the filter and requires Contacts write access. `name` is
   optional and only applies when the filter is saved.
+- If part of `text` names something the workspace does not have (a product,
+  tag or attribute that does not exist), the request returns 422 quoting that
+  part, for example `"purchased Cool Shirt"`. No filter is returned, so a bulk
+  action never runs on a broader audience than you described. Check the name
+  and retry, or drop that part of the description.
 
 An unsaved response has `null` identity fields because there is no database
 record to fetch later:

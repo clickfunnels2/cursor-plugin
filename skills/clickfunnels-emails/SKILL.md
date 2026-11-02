@@ -71,10 +71,13 @@ workspace.
 | Create broadcast | POST | `/api/v2/workspaces/{workspace_id}/emails/broadcasts` |
 | Update broadcast | PATCH | `/api/v2/emails/broadcasts/{id}` |
 | Delete broadcast | DELETE | `/api/v2/emails/broadcasts/{id}` |
+| Draft a resend to unopened recipients | POST | `/api/v2/emails/broadcasts/{id}/resend_unopened` |
 | Send/schedule broadcast | POST | `/api/v2/emails/broadcasts/{broadcast_id}/send_actions` |
+| Send broadcast test | POST | `/api/v2/emails/broadcasts/{id}/send_test` |
 | List send actions | GET | `/api/v2/emails/broadcasts/{broadcast_id}/send_actions` |
 | Fetch send action | GET | `/api/v2/emails/broadcasts/send_actions/{id}` |
 | Fetch broadcast stats | GET | `/api/v2/emails/broadcasts/{broadcast_id}/stats` |
+| Fetch what a broadcast sent | GET | `/api/v2/emails/broadcasts/{broadcast_id}/sent_content` |
 | Cancel scheduled send | DELETE | `/api/v2/emails/broadcasts/send_actions/{id}` |
 | Show settings | GET | `/api/v2/workspaces/{workspace_id}/emails/settings` |
 | Update settings | PUT | `/api/v2/workspaces/{workspace_id}/emails/settings` |
@@ -594,6 +597,90 @@ Three rules worth knowing before you rely on this:
 - An unknown `smart_sending_unit`, or a `smart_sending_time` outside 0.5 to 100,
   returns `422`.
 
+### Test a broadcast before sending
+
+Send the saved main content to an explicit list of one to five addresses. This
+does not send the audience, create contacts, or change content, status or schedule.
+Matching workspace contacts personalize the preview with their saved details.
+
+```http
+POST /api/v2/emails/broadcasts/{id}/send_test
+Content-Type: application/json
+```
+
+```json
+{
+  "emails_broadcasts_send_preview_action": {
+    "recipients": ["qa@example.com", "reviewer@example.com"],
+    "subject": "QA: Hello {{contact.first_name}}",
+    "from_address_id": 17
+  }
+}
+```
+
+`subject` and `from_address_id` are test-only overrides. Omit them, or send null or
+blank, to use the saved values. Sender IDs can be numeric or public IDs and must
+belong to this workspace's valid preview-sender set. A subject allows up to 998
+characters, valid Liquid, and no CR/LF. Each recipient entry contains one address;
+outer whitespace is trimmed and duplicate slots are sent separately, in order.
+
+The saved broadcast must already be eligible for a dashboard test send. Overrides
+cannot repair completed, canceled, unhealthy or incomplete broadcasts. Existing
+preview permissions, workspace quotas and the shared daily team budget apply.
+When either is used up the call returns `422` "Test email limit reached for this
+workspace or team..."; don't retry until the limit resets.
+
+API and MCP test sends share a limit of 10 requests per minute per user. Exceeding
+it returns HTTP 429 without creating a preview action or consuming preview budget.
+
+The call is synchronous. HTTP 200 returns:
+
+```json
+{"status":"accepted","accepted_count":2}
+```
+
+This confirms that the existing preview action ran for every requested recipient.
+It does not promise inbox delivery, and there is no action ID or delivery status to
+poll. Every repeated request is a new preview send.
+
+For MCP, use `take_action` with `workspace_id`, `resource: "email_broadcast"`,
+`action: "send_test"`, the broadcast `id`, and unwrapped `recipients`, `subject`
+and `from_address_id` fields inside `params`. `read_action` cannot send a test.
+Template tests, draft-body selection and split-test variant selection are outside
+this operation.
+
+### Drafting a resend to unopened recipients
+
+```http
+POST /api/v2/emails/broadcasts/{id}/resend_unopened
+Authorization: Bearer <token>
+```
+
+Send no body. The source must be `complete` with `complete_at` at least 24 hours
+ago (the exact 24-hour boundary is eligible); otherwise this returns `422`.
+The response is **201 Created** with the full new broadcast in `draft` status,
+including its own `id`, `public_id`, audience `filter_id`, and independent
+`template` reference. It copies the published content, sender/reply-to settings,
+topics, and both A/B variants and settings, with fresh statistics and no old
+schedule. `send_immediately: true` is a stored preference on this draft; it does
+not mean this call sent anything.
+
+The audience is contacts recorded as sent the source without a recorded open,
+using current subscription and suppression rules. It replaces the old segment
+criteria and stays dynamic until the send flow prepares recipients. An open
+recorded after recipients are queued may still result in receiving the resend.
+
+Review or edit the returned draft with the existing update endpoint, then create
+its send action separately. This operation does not accept content or schedule
+overrides, and each successful request creates another draft; retrying can
+therefore create duplicates. Use the new draft's ID for subsequent calls.
+The caller needs email write access, access to the source workspace and broadcast,
+and permission to create broadcasts there.
+
+For MCP, call `take_action` with `resource: "email_broadcast"`,
+`action: "resend_unopened"`, the source `id`, and `workspace_id`. It requires email
+write access and returns the new draft under `data`. `read_action` cannot run it.
+
 ### Sending or scheduling a broadcast
 
 Creating a broadcast only drafts it. To actually send it, create a **send action**
@@ -683,6 +770,25 @@ empty array together with `split_test: false` to remove B. Setting only
 for later editing. The response `variants` includes both A and B plus read-only
 delivery statistics; do not send response objects back as writable variants.
 
+### What a broadcast actually sent
+
+A broadcast points at its template rather than copying it, so the template's
+`html_body` shows the template as it is now, including edits made after the send.
+For the HTML recipients actually received, read:
+
+```http
+GET /api/v2/emails/broadcasts/{broadcast_id}/sent_content
+```
+
+It returns `versions`, one per distinct document in the order first sent, each with
+`html_hash`, `preheadline`, `first_sent_at` and `html_body`. The body is the document
+as it went out (the template plus the preview text, mailing address and branding the
+workspace adds) before merge tags were filled in and links were rewritten per
+contact. A split test has one version per variant whose preview text differs: the
+subject is not part of the document, so match a version to the broadcast's
+`variants` by `preheadline`. Broadcasts that have not sent, or that sent before
+documents were recorded (about mid-2023), return `versions: []`.
+
 ### Delivery and engagement stats
 
 Delivery progress, opens, clicks, bounces, unsubscribes, spam complaints, and
@@ -709,6 +815,26 @@ started sending. Revenue is attributed to a broadcast when the buyer reached the
 through one of its links; only live-mode transactions in the workspace currency count
 (a workspace with no currency set has `currency: null` and every currency summed), and
 `orders_count` is orders, not transactions.
+
+For a split test, add `expand[]=variants` to get each variant's own numbers:
+
+```http
+GET /api/v2/emails/broadcasts/{broadcast_id}/stats?expand[]=variants
+```
+
+`variants` lists the variants in the broadcast's order with `subject`, `preheadline`,
+`main` and `winner`, plus `test` and `winner_send`, each holding `recipients`,
+`bounced`, `unique_clicks`, `unsubscribed` and `spam_complaints`. `test` is the split
+test itself, where each variant went to its own share of the audience: compare
+variants on it, not on `winner_send`, which is the winner's later send to everyone
+else and is set only on the winning variant. The variants' counts add up to at
+most `performance`: only contacts found in the send record are attributed. Opens are not split here; use each variant's `open_count` on the
+broadcast record. Only the open pixel identifies a variant, so these numbers come
+from the record of which contacts got which variant, and that record is removed 30
+days after the broadcast completes: from then on `test` and `winner_send` are `null`. `recipients` counts contacts scheduled for the variant,
+including any skipped at send time.
+Read them after the two-week stats window has closed and before the 30 days are up.
+`variants` is `[]` for a broadcast that is not a split test.
 
 ## Inline body on a workflow send-email step
 

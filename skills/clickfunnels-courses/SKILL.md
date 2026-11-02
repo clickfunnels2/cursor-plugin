@@ -246,7 +246,19 @@ Returns **201 Created**:
 | `title` | string | Required. |
 | `lesson_content` | Markdown | Rendered into the lesson page on create. Headings, lists, and paragraphs are supported. |
 | `body` | string | Plain text/HTML body field, kept separate from the rendered page content. |
-| `image_id` | id | Lesson image - id of a workspace Image resource. |
+| `image_id` | id or null | Numeric or public ID of a workspace image; null detaches. |
+| `video_id` | id or null | Numeric or public ID of a ready video in this workspace; null detaches. |
+
+### Attach a video
+
+Import the video through the [Media skill](https://accounts.myclickfunnels.com/.well-known/media/skill.md), then poll
+until its status is `ready`. Send `{"courses_lesson":{"video_id":789}}` to
+`PATCH /api/v2/courses/lessons/:id`, or include `video_id` when creating the lesson.
+The response returns `video` and `image` objects (`id`, `public_id`, `name`, `url`),
+or null when unset.
+A pending, failed, missing, or foreign video returns 422
+`Request unprocessable: video_id must reference a ready video`.
+Attaching media leaves the lesson's page content untouched.
 
 Update a lesson, including its `title` or `body`, with
 `PATCH /api/v2/courses/lessons/:id` and a `courses_lesson` body. Returns
@@ -266,7 +278,9 @@ List a section's lessons with `GET /api/v2/courses/sections/:section_id/lessons`
     "current_path": "/why-agentic-systems-break-in-production",
     "sort_order": 0,
     "created_at": "2026-06-30T16:09:52.299Z",
-    "updated_at": "2026-06-30T16:09:52.434Z"
+    "updated_at": "2026-06-30T16:09:52.434Z",
+    "image": null,
+    "video": null
   }
 ]
 ```

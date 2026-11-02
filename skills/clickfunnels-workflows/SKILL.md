@@ -4,8 +4,9 @@ description: >
   Build marketing-automation Workflows programmatically - triggers, ordered
   action steps (email, tagging, attributes, opportunities, course/community
   access, webhooks, delays), conditional / A-B branching, enabling, and manually
-  enrolling contacts. Use this skill when you need to create or configure an
-  automation (welcome series, lead routing, tagging, onboarding) via the public API.
+  enrolling contacts or reading who is currently at a step. Use this skill when
+  you need to create, configure or inspect an automation (welcome series, lead
+  routing, tagging, onboarding) via the public API or MCP.
 version: "1.0"
 author: ClickFunnels
 tools:
@@ -36,13 +37,16 @@ with conditional / A-B branching, plus **runs** (a contact's pass through the wo
   an **A-B split test** (weighted variants).
 - Enable a workflow so it runs live, or **manually enroll** a specific contact.
 - Read back the whole automation tree (`/structure`) or inspect a contact's runs.
+- Find which contacts are at a step now, including their separate active or paused runs.
 
 ## Authentication
 
 OAuth2 password grant using an OAuth application's credentials - the same access
 token used across the V2 API. See the
 [Refine Filters Skill](https://accounts.myclickfunnels.com/.well-known/refine-filters/skill.md#authentication) for details.
-Any token authorized for the workspace can read and write.
+The token must grant the workspace and the workflow access required by the operation.
+Category-scoped tokens need `workflows:read` for reads or `workflows:write` for enrollment
+and other writes. Reading a run's compact contact does not require a separate contacts grant.
 
 ## Lifecycle (read this first)
 
@@ -70,7 +74,7 @@ A workflow is built in steps and only goes live when you explicitly enable it:
 | List / Create steps | GET/POST | `/api/v2/workflows/:workflow_id/steps` |
 | Show / Update / Delete step | GET/PATCH/DELETE | `/api/v2/workflows/steps/:id` |
 | Step stats (any step; email engagement when it sends one) | GET | `/api/v2/workflows/steps/:step_id/stats` |
-| List / Create runs | GET/POST | `/api/v2/workflows/:workflow_id/runs` |
+| List runs (optional current-step filter) / Enroll contact | GET/POST | `/api/v2/workflows/:workflow_id/runs` |
 | Show run | GET | `/api/v2/workflows/runs/:id` |
 
 ## Creating a workflow
@@ -127,8 +131,9 @@ Content-Type: application/json
 `appointments_calendar_id`, `appointments_event_type_id`, `emails_broadcasts_id`,
 `calendar_event_id`, `survey_workflow_id`. Booleans: `active`, `allow_anonymous_contacts`.
 
-> ! For **site events** (`$optin`, `$view`) scope with **`page_id`**, not `funnel_id` - these
-> events carry no funnel association, so a `funnel_id` condition silently never matches.
+> ! Page events (`$optin`, `$view`): `funnel_id` matches every page in that funnel, and
+> `page_id` narrows to one page. Pages outside a funnel (website pages) carry no funnel, so
+> scope those by `page_id` only - a `funnel_id` condition never matches them.
 
 > ! Condition fields go **directly on `workflows_trigger`**, never in a nested object (there is
 > no `settings` wrapper like a step's `step_type_settings`). A trigger field nested anywhere,
@@ -345,6 +350,85 @@ GET /api/v2/workflows/runs/:id
 Run `status` is derived: `active`, `paused`, `completed`, or `canceled`. Event-driven runs
 carry a non-null `event_id`; manual enrollments do not.
 
+### Who is at a step now?
+
+```http
+GET /api/v2/workflows/:workflow_id/runs?filter[current_step_id]=<step_public_id>
+GET /api/v2/workflows/:workflow_id/runs?filter[current_step_id]=201,202&filter[status]=paused
+```
+
+The workflow in the URL selects the collection. The optional `current_step_id` filter
+selects runs whose current step matches: use one numeric ID/public ID, or a comma-separated
+list to match any of several steps. Every step must belong to this workflow. Whitespace and
+duplicate values are ignored; a blank list, structured value, malformed ID, or any missing
+or out-of-workflow step rejects the entire request with 422. Existing single-value
+`contact_id` and `status` filters combine with the step filter using AND.
+
+Each row is one run, not one unique person. A contact with two runs at a step appears twice.
+Paused runs are included unless a status filter excludes them. This is current membership;
+it does not list historical visits. Without the step filter, completed and canceled runs
+remain available too. `updated_at` is the last run update, not a step-entry timestamp.
+
+List returns a bare array; show and enrollment return one run. Each run retains `contact_id`
+and embeds `contact` with `id`, `public_id`, `email_address`, `first_name`, `last_name`, and
+`phone_number`. Anonymous contacts can have null email, name, and phone fields. An
+unavailable or deleted contact is `null`, and its run remains in the response.
+For example, one list entry is:
+
+```json
+{
+  "id": 274,
+  "public_id": "GJPRyv",
+  "workflow_id": 323,
+  "contact_id": 255,
+  "current_step_id": 455,
+  "event_id": null,
+  "type": null,
+  "contact": {
+    "id": 255,
+    "public_id": "zJbndJ",
+    "email_address": "jane.doe@example.com",
+    "first_name": "Jane",
+    "last_name": "Doe",
+    "phone_number": null
+  },
+  "status": "active",
+  "skip_communication": false,
+  "completed_at": null,
+  "paused_at": null,
+  "created_at": "2026-10-22T17:26:14.883Z",
+  "updated_at": "2026-10-22T17:26:14.883Z"
+}
+```
+
+Pages contain 20 runs by default, at most 100 with `per_page`. Follow the `Link` header's
+`rel="next"` URL, or resend the same filters with `after` set to `Pagination-Next`.
+Membership can change while you page; this is a live view, not a frozen snapshot.
+
+### MCP run discovery and reads
+
+Call `describe_category` with `category: "workflows"`, then use the `workflow_run` resource
+with the existing `list` and `fetch` tools:
+
+```json
+{
+  "workspace_id": "KjkAeg",
+  "resource": "workflow_run",
+  "parent_id": "323",
+  "filters": { "current_step_id": "455", "status": "active" },
+  "per_page": 20
+}
+```
+
+This is a `list` argument example. `parent_id` is the workflow ID/public ID. Pass the
+workspace ID/public ID from `list_workspaces` on every data call; the server keeps no
+current workspace. To fetch one run, use `fetch` with
+`{"workspace_id":"KjkAeg","resource":"workflow_run","id":"274"}`;
+the shallow fetch needs no parent.
+MCP wraps records in its standard `data` envelope and exposes `next_after` when another
+page exists. Keep the filters when following that cursor. `workflow_run` has no write verbs;
+enrollment remains available through the existing bulk contact run-workflow action or REST POST.
+
 ## Reading the structure
 
 ```http
@@ -465,5 +549,5 @@ GET  /api/v2/workflows/WF/structure
 | 422 "move_step workflow_id references an archived workflow." | Archived move target | Use a non-archived workflow. |
 | 422 "branch must be 'matched' or 'unmatched'..." / "...a variant index between 0 and 1." | Wrong branch token for the split type | Use matched/unmatched (conditional) or 0/1 (split test). |
 | 422 "`<field>` '...' was not found in this workspace." | FK id from another workspace / wrong type | Use a public id of the right type in this workspace. |
-| `$optin`/`$view` trigger never fires | Scoped by `funnel_id` | Scope site events by `page_id` instead. |
+| `$optin`/`$view` trigger never fires | Scoped by `funnel_id` on a page outside that funnel (e.g. a website page) | Scope pages outside a funnel by `page_id` only. |
 | 404 "Not found" | Workflow/step/trigger/run id outside your accessible scope | Verify the id and token. |
