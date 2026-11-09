@@ -1,9 +1,9 @@
 ---
 name: clickfunnels-media
 description: >
-  Manage ClickFunnels images, import videos, and find downloadable files. Use when
-  asked to upload hosted course videos, poll video processing, attach lesson media,
-  upload images, or discover downloads for products.
+  Manage ClickFunnels images, import videos, and create or find downloadable files.
+  Use when asked to upload hosted course videos, poll video processing, attach lesson
+  media, upload images, or create or discover downloads for products.
 version: "1.0"
 author: ClickFunnels
 tools:
@@ -17,14 +17,17 @@ references:
 
 # ClickFunnels Media
 
-Upload images by URL, import hosted videos in the background, and find existing
-downloadable files. Use the returned IDs to attach media to your content.
+Upload images by URL or as a data URI, import hosted videos in the background,
+and create or find downloadable files. Use the returned IDs to attach media to
+your content.
 
 ## When to use this skill
 
 - Move a hosted course library into ClickFunnels and attach its videos to lessons.
 - Import an image and use its ID as a video poster or lesson image.
+- Create a download from a hosted file, such as a lead magnet or a digital product.
 - Find a download's `asset_id` to grant file access through a product variant.
+- Get a download's `permanent_url` to link to the file from a page or email.
 
 ## Authentication
 
@@ -36,7 +39,7 @@ in [/llms.txt](https://accounts.myclickfunnels.com/llms.txt). Never send an MCP 
 
 For MCP, call `describe_category` with `media`. The `image` resource has CRUD,
 `video` has asynchronous create plus list/fetch/update/destroy, and `download`
-has list/fetch. Pass `workspace_id` on every data call. Use the operations and
+has create/list/fetch. Pass `workspace_id` on every data call. Use the operations and
 attributes returned by discovery.
 
 ## Endpoint reference
@@ -44,12 +47,13 @@ attributes returned by discovery.
 | Action | Method | Path |
 |---|---|---|
 | List images | GET | `/api/v2/workspaces/:workspace_id/images` |
-| Upload image by URL | POST | `/api/v2/workspaces/:workspace_id/images` |
+| Upload image by URL or data URI | POST | `/api/v2/workspaces/:workspace_id/images` |
 | Fetch/update/delete image | GET / PATCH / DELETE | `/api/v2/images/:id` |
 | List videos | GET | `/api/v2/workspaces/:workspace_id/videos` |
 | Import video by URL | POST | `/api/v2/workspaces/:workspace_id/videos` |
 | Poll/update/delete video | GET / PATCH / DELETE | `/api/v2/videos/:id` |
 | List downloads | GET | `/api/v2/workspaces/:workspace_id/downloads` |
+| Create download by URL | POST | `/api/v2/workspaces/:workspace_id/downloads` |
 | Fetch download | GET | `/api/v2/downloads/:id` |
 
 Lists return bare arrays. Follow `Pagination-Next` as the next request's `after`
@@ -145,11 +149,29 @@ has the same shape as GET. There are no video CRUD webhook topics.
 Create an image with `{"image":{"name":"Cover","upload_source_url":"https://media.example.com/cover.png"}}`.
 Image update also accepts `alt_text`. The `url` in the create or update response is
 the image's permanent URL. The file is processed in the background, so for a few
-seconds that URL can answer 404 (new image) or the previous file (replaced image). Use an image's `id` or `public_id` in
+seconds that URL can answer 403 (new image) or the previous file (replaced image). Use an image's `id` or `public_id` in
 `poster_image_id` or a lesson's `image_id`.
 
-Downloads are read-only here. List or fetch an existing download and use its
-`asset_id` in a product variant's `asset_ids` to grant download access.
+For an image that is not hosted anywhere, `upload_source_url` can be a `data:` URI
+that carries the file itself, base64-encoded:
+`{"image":{"name":"Cover","upload_source_url":"data:image/png;base64,iVBORw0KGgo..."}}`.
+Send it in a JSON request body. Only the `;base64` form is accepted. Either way the
+file must be a JPG, PNG, WEBP, GIF, SVG or ICO of up to 10 MB, judged by its content
+rather than the declared type.
+
+Create a download with `{"download":{"name":"Conversion Checklist","upload_source_url":"https://files.example.com/checklist.pdf"}}`.
+The file is fetched while the request runs, so the download is ready once the 201
+returns. It can be up to 100 MB and must finish downloading within the request, so
+use a fast direct link; executable or script files are refused. A workspace can
+create 10 downloads a minute.
+`name` defaults to the filename without its extension, and the optional `image_id`
+sets the download's preview image. Use the returned `asset_id`, or that of any
+listed download, in a product variant's `asset_ids` to grant download access.
+Downloads cannot be updated or deleted through the API.
+
+A download's `permanent_url` is the same link the app's copy-link button gives: it
+does not expire, so put it in a page button or an email as is. Replacing the
+download's file gives it a new link, so read `permanent_url` again after a replace.
 
 ## Worked example
 
@@ -167,7 +189,12 @@ Downloads are read-only here. List or fetch an existing download and use its
 | 404 | Unknown resource or inaccessible workspace | Check the ID and workspace grant. |
 | 422 `video_id must reference a ready video` | Pending, failed, missing, or foreign video | Poll until ready and use a video in this workspace. |
 | 422 on video update | Video is queued or processing | Wait for ready or failed. |
+| 422 `File is not a valid data URI` | `upload_source_url` starts with `data:` but is not `data:<media type>;base64,<data>` | Base64-encode the file into that form. |
+| 422 `File must be JPG, PNG, WEBP, GIF, SVG, or ICO` or `must not exceed 10MB` | The image's actual type or size | Convert or shrink the image. |
 | 429 | Five pending imports | Respect `Retry-After: 60`. |
+| 429 on download create | More than 10 download creates in a minute in this workspace | Respect `Retry-After: 60`. |
+| 422 `File could not be downloaded from upload_source_url` | Download create could not fetch the source in time, or the URL is not public | Supply a fast, public direct download URL. |
+| 422 `File is too large (maximum is 100 MB)` | Download create source is over 100 MB | Upload larger files in the app. |
 | `download_failed` | Source could not be downloaded | Supply an accessible direct download URL. Details are intentionally not exposed. |
 | `file_too_large` | Download exceeds the streaming limit | Supply a video under 3 GB. |
 | `invalid_file_type` | Body is not an MP4, AVI, or MPEG video (MOV included) | Supply MP4, AVI, or MPEG. |

@@ -6,7 +6,7 @@ description: >
   in Markdown, then publish the whole content tree in one step. Use this skill
   when you need to scaffold, populate, or publish course content via the public
   API. Requires an OAuth application token.
-version: "1.1"
+version: "1.3"
 author: ClickFunnels
 tools:
   - http
@@ -131,7 +131,8 @@ On success: **201 Created** with the course. Capture `id` (use it as
   "comments_enabled": false,
   "created_at": "2026-06-30T15:56:18.369Z",
   "updated_at": "2026-06-30T15:56:18.508Z",
-  "image_url": null
+  "image_url": null,
+  "image": null
 }
 ```
 
@@ -142,8 +143,14 @@ On success: **201 Created** with the course. Capture `id` (use it as
 | `title` | string | Required. The slug (`current_path`) is derived from it. |
 | `description` | string | Short course summary. |
 | `show_in_community` | boolean | Surface the course in the community area. |
+| `show_to_non_members` | boolean | Let people who are not enrolled see the course. |
+| `upgrade_url` | string | Upgrade link. A URL scheme is stripped on save, so `https://example.com/pricing` is stored and returned as `example.com/pricing`. |
 | `redirect_to_full_course` | boolean | Redirect behavior for members. |
+| `unauthorized_redirect_url` | string | Where to send someone who cannot access the course. |
+| `comments_enabled` | boolean | Enable lesson comments. Turning this on for a course with no community space yet sets one up when the site has a community. |
 | `image_id` | id | Cover image - id of a workspace Image resource. |
+
+Reads include `image_url` and an `image` object (`id`, `public_id`, `name`, `url`), or `image: null` when no cover is set.
 
 ## Sections (modules)
 
@@ -180,14 +187,16 @@ Returns **201 Created**:
   "upgrade_url": null,
   "parent_id": 490402,
   "sort_order": 1,
+  "image": null,
   "created_at": "2026-06-30T15:57:00.738Z",
   "updated_at": "2026-06-30T15:57:00.738Z"
 }
 ```
 
 `parent_id` comes back set to the course's `root_section_id` and `sort_order` is
-assigned automatically (it appends after the existing modules). Neither field is
-settable from this API.
+assigned automatically (it appends after the existing modules). `parent_id`,
+`sort_order`, and `current_path` are returned on read and ignored if you send
+them. Sending those keys still returns 200.
 
 ### Permitted section fields (create and update)
 
@@ -199,6 +208,10 @@ settable from this API.
 | `is_hidden_from_non_members` | boolean | Hide the module from non-members. |
 | `blocker_section_id` | id | Gate this module behind another section. |
 | `blocker_lesson_id` | id | Gate this module behind a specific lesson. |
+| `image_id` | id or null | Numeric or public ID of a workspace image, used as the module thumbnail. Null detaches. A missing or cross-workspace id returns 422. |
+| `upgrade_url` | string | Upgrade link for this module, stored as sent. |
+
+Reads include an `image` object (`id`, `public_id`, `name`, `url`), or `image: null` when no thumbnail is set.
 
 Update a module, including its `title`, with
 `PATCH /api/v2/courses/sections/:id` and the same `courses_section` body.
@@ -244,10 +257,34 @@ Returns **201 Created**:
 | Field | Type | Notes |
 |-------|------|-------|
 | `title` | string | Required. |
-| `lesson_content` | Markdown | Rendered into the lesson page on create. Headings, lists, and paragraphs are supported. |
-| `body` | string | Plain text/HTML body field, kept separate from the rendered page content. |
+| `lesson_content` | Markdown | Rendered into the lesson page on create and on update. An update replaces the page content and keeps head code, footer code, custom CSS, and popups already on the page. A blank value is ignored. See [Lesson content Markdown](#lesson-content-markdown). |
+| `body` | string | Lesson description. This is not the page buyers see. |
 | `image_id` | id or null | Numeric or public ID of a workspace image; null detaches. |
 | `video_id` | id or null | Numeric or public ID of a ready video in this workspace; null detaches. |
+
+### Lesson content Markdown
+
+`lesson_content` is rendered into the lesson page when the lesson is created
+or updated. This is the syntax that renders:
+
+| Syntax | Renders as |
+|--------|------------|
+| `# Title` | Heading. The heading text is plain, with no inline formatting. |
+| `## Title`, and deeper (`###` and so on) | Subheading. Plain text, same as a heading. |
+| A line of text | Paragraph. |
+| `- item` | Bullet list. Consecutive items stay one list. |
+| `1. item` | Numbered list. Consecutive items stay one list. |
+| `**bold**` or `__bold__` | Bold, inside a paragraph or list item. |
+| `*italic*` or `_italic_` | Italic, inside a paragraph or list item. |
+| `![alt](https://example.com/diagram.png)` on its own line | Image, sized to the lesson content width. `alt` is the image alt text. |
+| `[text](https://example.com/docs)` | Link, inside a paragraph or list item. An `http` or `https` URL opens in a new tab. A root-relative URL (`/docs`), a `mailto:` link, or a `#anchor` stays in the same tab. |
+
+Underscores inside a URL are left as written, so
+`https://cdn.example.com/lesson_images/diagram.png` is not treated as italic.
+
+Put each image on its own line. An image written in the middle of a sentence
+stays as text. Write links in a paragraph or a list item, not in a heading.
+Code fences, blockquotes, tables, and horizontal rules stay as text.
 
 ### Attach a video
 
@@ -260,9 +297,11 @@ A pending, failed, missing, or foreign video returns 422
 `Request unprocessable: video_id must reference a ready video`.
 Attaching media leaves the lesson's page content untouched.
 
-Update a lesson, including its `title` or `body`, with
-`PATCH /api/v2/courses/lessons/:id` and a `courses_lesson` body. Returns
-**200 OK** with the updated lesson.
+Update a lesson with `PATCH /api/v2/courses/lessons/:id` and a `courses_lesson`
+body. Returns **200 OK** with the updated lesson. Send `lesson_content` to replace
+the page content. Head code, footer code, custom CSS, and popups already on the
+page are kept. `sort_order` and `current_path` are returned on read and ignored
+if you send them; the response is still 200.
 
 List a section's lessons with `GET /api/v2/courses/sections/:section_id/lessons`:
 

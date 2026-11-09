@@ -61,7 +61,8 @@ properties of that subset make writing `markup` to an existing page dangerous:
   do not write. Sending that string back replaces the page with nothing.
 - **Writing replaces everything.** Sending `markup` rebuilds the page from your
   string and overwrites both the published page and the draft the editor opens.
-  Nothing is merged, and there is no partial write.
+  Nothing is merged, and there is no partial write. The page's popup is the one
+  exception: markup without a `<popup>` leaves it as it is (see `<popup>`).
 
 Put together, a read-modify-write cycle on a page a person built in the editor
 silently destroys whatever PML could not express, in the live page and in the
@@ -164,6 +165,8 @@ These are the DSL parser errors returned at validate time. HTTP-level errors
 | 400 "Markup is not valid PML: unknown top-level element(s)" | Unknown DSL tag at the top level | Check element name in the DSL reference below |
 | 400 "Markup is not valid PML: no PML elements found" | Plain text or raw HTML in the `markup` field | Wrap content in valid PML elements (`<section>`, `<saved-section>`, etc.) |
 | 400 "`<column>` element must be inside a `<row>`" | Nesting violation | Always nest section -> row -> column -> content |
+| 400 "Markup is not valid PML: `<popup>` is the page's popup and goes at the top level" | A `<popup>` inside a section, row, column or flex, or more than one `<popup>` | Put one `<popup>` at the top level, beside the page's sections |
+| 400 "Markup is not valid PML: unknown element(s) ... inside `<navigation>`" (or `<select>`, `<submenu>`, `<popup>`), or "`<icon>` takes no child elements" | A child element the element does not take | Check the element's allowed children below |
 | 400 "Invalid attribute(s) '...' on `<element>`" | Attribute is not allowed on that element (e.g., `margintop` on `<input>`) | Check the per-element attribute lists below |
 | 400 "Markup appears to be truncated: ..." | The `markup` you sent stops mid-construct - a tag, attribute value, comment or `<customhtml>` body never closes, or elements are still open at the end of the document. Almost always means your markup was cut off before you finished writing it (an output token limit, a truncated buffer). | Re-send the complete document. Do NOT retry with the same truncated string, and do NOT try to "repair" it by sending only the tail - `markup` replaces the whole page, so a partial document deletes everything after the cut-off point. If the page is long, add the pixel or code with `head_code`/`footer_code` instead of rewriting the body. |
 
@@ -199,6 +202,8 @@ These are the DSL parser errors returned at validate time. HTTP-level errors
   A page is a sequence of top-level <section> elements.
   Each section is a full-width horizontal band.
   Sections stack vertically top to bottom.
+  A page may also have one top-level <popup>, holding sections of its own
+  (see <popup> under 3. STRUCTURE ELEMENTS).
 
 ### Nesting containers
 
@@ -246,7 +251,8 @@ These are the DSL parser errors returned at validate time. HTTP-level errors
                 them and ignores them; do not send them.
 
   Animation attributes are accepted on section, headline, subheadline,
-  paragraph, list, button, image, video and accordion:
+  paragraph, list, button, image, video, accordion, icon, progressbar and
+  videopopup:
 
   animation          fade-in | glide-in | expand-in | bounce-in | fold-in |
                      puff-in | spin-in | reveal | flip-in | slide-in |
@@ -378,6 +384,47 @@ These are the DSL parser errors returned at validate time. HTTP-level errors
   Children of a flex can size and align themselves with grow, shrink, basis
   and align-self.
 
+
+### <popup>
+
+  The page's popup: a modal that opens over the page, built from sections
+  like the page itself. It goes at the top level, beside the page's
+  sections, at most once per page, and holds only <section> and
+  <saved-section> elements. A button opens it with href="#open-popup" and
+  closes it with href="#close-popup".
+
+  Attributes:
+    on-exit    "true" opens it when the visitor moves to leave the page
+    on-load    "true" opens it when the page loads
+    delay      Milliseconds before it opens on load, 0-20000 (with on-load)
+    width      "600px" | "50%" (default 50%, 80% on mobile)
+    backdrop   Color behind the popup, e.g. "rgba(0,0,0,0.6)"
+    bg         Background color of the popup box
+
+  A markup write without a <popup> keeps the page's popup as it is. One
+  with a <popup> replaces it, except that sending back the <popup> you read
+  unchanged keeps the popup exactly as stored. Blog posts have no popup of
+  their own, so <popup> in a post's markup is a 400.
+
+  <section>
+    <row cols="1">
+      <column>
+        <button href="#open-popup">Get 20% off</button>
+      </column>
+    </row>
+  </section>
+  <popup on-exit="true" width="600px" backdrop="rgba(0,0,0,0.7)">
+    <section padding="40">
+      <row cols="1">
+        <column>
+          <headline align="center">Wait! Take 20% off</headline>
+          <input label="Email" type="email"/>
+          <button href="#submit-form">Send my code</button>
+          <button href="#close-popup">No thanks</button>
+        </column>
+      </row>
+    </section>
+  </popup>
 
 ================================================================================
 ## 4. TEXT ELEMENTS
@@ -539,6 +586,31 @@ These are the DSL parser errors returned at validate time. HTTP-level errors
 
   <divider color="#1e293b" thickness="2" padding="40" width="100%"/>
 
+### <videopopup>
+
+  An image that opens a video in a lightbox when clicked. Detects YouTube,
+  Vimeo, Wistia and HTML5 video from src, as <video> does.
+
+  Attributes:
+    src           Video URL
+    image         Thumbnail image URL (default: a "watch video" placeholder)
+    alt           Thumbnail alt text
+    width         Thumbnail width: "400px" | "100%"
+    align         left | center | right
+    radius        sm | md | lg | xl | full | "20px"
+    close-button  show (default) | hide
+    backdrop      Color behind the video, e.g. "rgba(0,0,0,0.8)"
+
+  <videopopup src="https://www.youtube.com/watch?v=XXXXXXXXXXXX"
+              image="https://cdn.example.com/thumb.jpg" width="100%" radius="lg"/>
+
+### <audio>
+
+  An audio player.
+  Attributes: src (audio file URL), loop ("true" | "false")
+
+  <audio src="https://cdn.example.com/episode-1.mp3"/>
+
 
 ================================================================================
 ## 6. INTERACTIVE ELEMENTS
@@ -582,7 +654,7 @@ These are the DSL parser errors returned at validate time. HTTP-level errors
                             cannot set it, and until it is set a click does
                             nothing.
     ?next_funnel_step=true  Go to the next step of the funnel
-    #open-popup             Open the page's popup
+    #open-popup             Open the page's popup (see <popup>)
     #close-popup            Close the popup
 
   CTA best practices:
@@ -601,19 +673,38 @@ These are the DSL parser errors returned at validate time. HTTP-level errors
 ### <input>
 
   Attributes:
-    label         Field label
+    label         Field label. Leave it off and the label (also the hint,
+                  until you set placeholder) comes from type: "Full Name",
+                  "First Name", "Last Name", "Email", "Phone",
+                  "Shipping Address", "Shipping City", "Shipping State",
+                  "Shipping Country", "Shipping Zip". A custom field says
+                  "Add your label".
     type          name | first_name | last_name | email | phone_number |
                   shipping_address | shipping_city | shipping_state |
                   shipping_country | shipping_zip | text
                   "phone" is read as phone_number and "full_name" as name.
-                  Any other value (including "text") makes a custom field,
-                  saved to a contact custom attribute named after the label.
-    placeholder   Hint text
-    required      "true" | "false"
-    width         "100%" | "300px"
+                  Any other value (including "text") makes a custom field.
+                  It is saved as its own contact attribute, never into email.
+    name          Custom contact-attribute key. Use it with type="text" or
+                  any other non-contact type. name on a contact type
+                  (email, name, phone_number, ...) is a 400: set
+                  type="text", or omit name. It is sanitized to letters,
+                  numbers and underscores. A key that would post as contact
+                  data (email, phone, first_name, ...) gets a numeric suffix
+                  so the answer stays its own attribute. Omit name and the
+                  key is taken from the label. On a new input, name alone
+                  (no type) is a custom field with that key.
+    placeholder   Hint text. With a label, both are kept. A placeholder
+                  alone becomes the label.
+    required      "true" | "false". Email is always required; "false" on
+                  an email input is ignored. Every other type is optional
+                  unless you send "true".
+    width         "100%" | "300px" (written on the wrapper only)
     radius        sm | md | lg | "8px"
     border        thin | medium | thick | "2 solid #ccc"
-    padding       px
+    padding       px, or the same shorthand as section padding: "12",
+                  "22 24" (vertical, then horizontal), "22px 24px 19px"
+                  (top, horizontal, bottom)
 
   ! **`<input>` does NOT accept `margintop` / `margintop-mobile`** - those
      attributes are content-element-only (headline, paragraph, button,
@@ -624,6 +715,72 @@ These are the DSL parser errors returned at validate time. HTTP-level errors
 
   <input label="Email Address" type="email" placeholder="you@example.com"
          required="true" width="100%" radius="md"/>
+
+### <textarea>
+
+  A multi-line text field. Its answer is saved to a contact custom
+  attribute: a textarea has no contact type.
+
+  Attributes:
+    label         Field label, also shown as its placeholder. A placeholder
+                  alone is read as the label; a label and a different
+                  placeholder are a 400, as the field shows only one text.
+    name          Custom attribute key the answer is saved to (default:
+                  the label). It is sanitized like a custom attribute key;
+                  a key the form would post as contact data (email, phone,
+                  ...) gets a numeric suffix, such as email_2.
+    required      "true" | "false"
+    width         "100%" | "300px"
+    height        "160px" (default 120px)
+    radius        sm | md | lg | "8px"
+    border        thin | medium | thick | "2 solid #ccc"
+    padding       px, or the shorthand <input> takes: "12", "22 24", "22 24 19"
+
+  <textarea label="How can we help?" name="message" height="160px" required="true"/>
+
+### <checkbox>
+
+  A checkbox, such as a consent or terms box. Its text is its label, and
+  takes inline formatting, links included. It is saved to a contact custom
+  attribute.
+
+  Attributes:
+    name          Custom attribute key (default: the label, as on <textarea>)
+    required      "true" | "false"
+    checked       "true" starts it checked
+
+  <checkbox name="terms" required="true">I agree to the <a href="/terms">terms</a></checkbox>
+
+### <select>
+
+  A dropdown. List your own <option>s, saved to the contact custom attribute
+  `name` names, or pick a list the published page fills in with `type`.
+
+  Attributes:
+    type      custom (the default when it has options) | country | state
+              (US states) | province (Canadian provinces). A country, state
+              or province list takes no <option>s, and submits as the
+              visitor's country or state.
+    name      Custom attribute key of your own list (required with options)
+    required  "true" | "false"
+    width     "100%" | "300px"
+    align     left | center (default) | right
+    bg        Field background color
+    radius    sm | md | lg | "8px"
+    border    thin | medium | thick | "1 solid #ccc"
+    shadow    sm | md | lg, or one CSS box-shadow
+
+  Each <option value="..."> is one choice: its text is what the visitor sees
+  and its value what is saved (default: its text). A required list needs a
+  first <option value=""> as its prompt, or its first choice counts as an
+  answer.
+
+  <select name="plan" required="true">
+    <option value="">Choose a plan</option>
+    <option value="basic">Basic</option>
+    <option value="pro">Pro</option>
+  </select>
+  <select type="country"/>
 
 ### <link>
 
@@ -694,6 +851,88 @@ These are the DSL parser errors returned at validate time. HTTP-level errors
     <item title="Question goes here?">Detailed answer goes here.</item>
     <item title="Another question?">Another answer here.</item>
   </accordion>
+
+### <icon>
+
+  A Font Awesome icon. It can link like a button.
+
+  Attributes:
+    icon      check | star | heart | arrow | plus | bolt | thumbsup | circle,
+              or a Font Awesome class such as "fas fa-rocket"
+    size      "48px" | "3rem" (default 55px)
+    color     Icon color
+    align     left | center | right
+    opacity   0-100, or a 0-1 fraction
+    bg        Background color behind the icon
+    href, target, submit-go-to, scroll-target, show-targets, hide-targets
+              Click actions, as on <button>
+
+  <icon icon="fas fa-rocket" size="48px" color="#7c3aed"/>
+
+### <progressbar>
+
+  A progress bar, such as "Step 1 of 2".
+
+  Attributes:
+    progress      0-100 (default 20)
+    text          Text on the bar (default "Almost Complete...")
+    text-outside  "true" shows the text above the bar instead of in it
+    bg            Track color
+    color         Color of the filled part
+    textcolor     Text color
+    height        Bar height in px
+    width         "100%" | "400px"
+    radius        sm | md | lg | xl | full | "8px"
+
+  <progressbar progress="50" text="Step 1 of 2" color="#22c55e" bg="#e5e7eb" radius="full"/>
+
+### <survey>
+
+  One of the workspace's surveys. Its questions, their order and what each
+  answer leads to come from the survey itself; PML places it on the page.
+
+  Attributes:
+    workflow-id  id or public_id of the survey's workflow. A workflow that is
+                 not a survey of the page's workspace is a 400.
+    end-text     Text shown when the survey is done (default "Survey finalized")
+    end-url      Where the visitor goes when the survey is done
+    progress     "false" hides the survey's progress bar
+
+  <survey workflow-id="WORKFLOW_PUBLIC_ID" end-text="Thanks, we'll be in touch!"/>
+
+### <navigation>
+
+  A navigation menu, which folds into a menu button on mobile. Its children
+  are its items, in order:
+
+    <link href="..." target="_blank">Text</link>   A link
+    <submenu title="..." href="...">...</submenu>  A dropdown of <link>s
+                                                   and <submenu>s
+    <blog-submenu title="Blog"/>                   A dropdown of the site's
+                                                   blog categories
+    <image src="..." width="120px"/>               A logo
+
+  Without children it gets the editor's default items (Shop, Blog, About Us).
+
+  Attributes:
+    collapse   mobile (default) | always | off: when the items fold into the
+               menu button
+    direction  row (default) | column
+    justify    start | center | end | space-between | space-around
+    gap        Space between items in em, such as "1.5em"
+    color      Link color
+    font, fontsize, weight
+               Link text, as on <headline>
+
+  <navigation justify="space-between" color="#0f172a">
+    <image src="https://cdn.example.com/logo.png" width="120px"/>
+    <link href="/">Home</link>
+    <submenu title="Programs">
+      <link href="/coaching">Coaching</link>
+      <link href="/courses">Courses</link>
+    </submenu>
+    <link href="/contact">Contact</link>
+  </navigation>
 
 ### <customhtml>
 
@@ -1704,6 +1943,9 @@ These are the DSL parser errors returned at validate time. HTTP-level errors
 
   HTTP 400 - nesting violation:
     { "error": "Bad request: <column> element must be inside a <row>. ..." }
+
+  HTTP 400 - a child an element does not take:
+    { "error": "Bad request: Markup is not valid PML: unknown element(s) <button> inside <navigation>. Elements inside <navigation> must be one of: <link>, <submenu>, <blog-submenu>, <image>. (line 4)" }
 
   HTTP-level errors (401 missing token, 404 not found, etc.) are returned by the
   consuming API - see the Pages Skill or Blogs Skill for those.

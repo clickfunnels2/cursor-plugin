@@ -58,7 +58,9 @@ workflow triggers also requires Workflows write access.
 ## Payment mode and page content
 
 The funnel's `live_mode` controls payment processing: `false` is test mode,
-while `true` enables live payments. Changing it does not publish pages. Page
+while `true` enables live payments. A newly created funnel defaults to `true`
+(live payments); pass `false` when you want test mode. Changing it does not
+publish pages. Page
 content is saved live through the existing Pages API, one page write at a
 time. See [Saving live page content](https://accounts.myclickfunnels.com/.well-known/pages/skill.md#saving-live-page-content)
 for the internal, custom HTML, and external SDK hosting paths and the approval
@@ -256,6 +258,30 @@ nests the new split inside that branch - if you want a split to apply to ALL
 traffic after an A/B test, create it before the A/B test (or anchor it on a
 step outside the branches), not on a page that is already a variant.
 
+### Where the split runs
+
+A split test assigns a branch in two places:
+
+- **The funnel URL.** A visitor who opens the funnel's entry URL is assigned a
+  branch by weight. When that entry redirects, the choice is kept in a cookie
+  for that funnel for one day, so the visitor stays on the same branch on later
+  visits. Otherwise the entry renders the branch in place, sets no cookie, and
+  draws again on each visit.
+- **The step before the split.** A visitor who moves from that step to the next
+  one is assigned a branch by weight. The choice is stored on the visitor's
+  funnel run.
+
+**A branch page's own URL does not run the split.** A request for a branch
+page's path serves that page, whatever its weight. A variant weighted `0`
+still loads at its own path. The split is a routing rule for traffic that
+passes through it, not a block on the page. The same rule applies to a split
+nested inside another split's branch.
+
+To test a split, or to collect results, send traffic to the funnel's entry
+URL: the funnel's domain plus its `current_path` (see
+[Funnel settings](#funnel-settings)). Do not share or advertise a branch
+page's URL, because that traffic skips the test.
+
 ### Example - wrap step N+1 as the test variant
 
 ```http
@@ -289,6 +315,10 @@ removing either single branch (`left` or `right`) collapses the entire split:
 the surviving branch's pages are promoted up under the split's parent (so they
 remain attached to the funnel's main workflow) and the split test wrapper is
 destroyed. `branch=both` is the same end-state with both sides discarded.
+
+MCP `destroy` of `funnel_split_test_step` does not follow that default. Pass
+`params.branch` of `left` or `right` (the side to remove). Omitting `branch`,
+or passing `both`, is rejected, so a delete never removes both branches.
 
 ## Conditional split steps
 
@@ -422,6 +452,10 @@ split's parent (so they remain attached to the funnel's main workflow) and the
 conditional split wrapper is destroyed. `branch=both` is the same end-state
 with both sides discarded.
 
+MCP `destroy` of `funnel_conditional_split_step` does not follow that default.
+Pass `params.branch` of `matched` or `unmatched` (the side to remove). Omitting
+`branch`, or passing `both`, is rejected, so a delete never removes both branches.
+
 ## Funnel structure
 
 ```http
@@ -433,7 +467,10 @@ conditional-split, and split-test steps, in order. The workflow's internal
 container steps (the root container, split-branch containers, and the
 post-split convergence) are spliced out, so `steps` is a flat ordered list you
 can walk directly. Useful for rendering an outline, finding a step, or picking a
-`sort_order` before inserting a page.
+`sort_order` before inserting a page. Each show-page `page` includes `external`
+(true only for a page hosted off ClickFunnels), `custom_html_page` (true when
+ClickFunnels serves HTML you supplied), and `sdk_token` (the token for either
+SDK-powered page, null for an editor page).
 
 ! **FORBIDDEN - a funnel step's path is its own standalone slug, never the funnel
 path + the step slug.** The `url` returned per step is composed **automatically**
@@ -459,7 +496,7 @@ and split nodes carry a `convergence_step_id` (the step where every path rejoins
       "id": 1178, "public_id": "jxGkbJ", "step_type": "show_page_step",
       "name": "Entry", "sort_order": 0, "show_page_step_id": "WJmQqJ",
       "page": { "id": 1413, "public_id": "joXkgY", "name": "Entry",
-        "url": "https://acme.myclickfunnels.com/entry", "external": false, "sdk_token": null }
+        "url": "https://acme.myclickfunnels.com/entry", "external": false, "custom_html_page": false, "sdk_token": null }
     },
     {
       "id": 1184, "public_id": "JEDdre", "step_type": "conditional_split_step",
@@ -469,13 +506,13 @@ and split nodes carry a `convergence_step_id` (the step where every path rejoins
           { "id": 1189, "public_id": "vbaRZj", "step_type": "show_page_step",
             "name": "VIP Welcome", "sort_order": 0, "show_page_step_id": "neonkv",
             "page": { "id": 1418, "public_id": "YGBWDj", "name": "VIP Welcome",
-              "url": "https://acme.myclickfunnels.com/vip-welcome", "external": false, "sdk_token": null } }
+              "url": "https://acme.myclickfunnels.com/vip-welcome", "external": false, "custom_html_page": false, "sdk_token": null } }
         ] },
         { "branch": "unmatched", "steps": [
           { "id": 1190, "public_id": "vyggrJ", "step_type": "show_page_step",
             "name": "Guest Welcome", "sort_order": 0, "show_page_step_id": "RJgLRj",
             "page": { "id": 1419, "public_id": "ewMRAj", "name": "Guest Welcome",
-              "url": "https://acme.myclickfunnels.com/guest-welcome", "external": false, "sdk_token": null } }
+              "url": "https://acme.myclickfunnels.com/guest-welcome", "external": false, "custom_html_page": false, "sdk_token": null } }
         ] }
       ]
     },
@@ -487,13 +524,13 @@ and split nodes carry a `convergence_step_id` (the step where every path rejoins
           { "id": 1191, "public_id": "vpzzzJ", "step_type": "show_page_step",
             "name": "Premium Offer A", "sort_order": 0, "show_page_step_id": "MJnnnJ",
             "page": { "id": 1422, "public_id": "JygoNY", "name": "Premium Offer A",
-              "url": "https://acme.myclickfunnels.com/premium-offer-a", "external": false, "sdk_token": null } }
+              "url": "https://acme.myclickfunnels.com/premium-offer-a", "external": false, "custom_html_page": false, "sdk_token": null } }
         ] },
         { "weight": 40, "steps": [
           { "id": 1193, "public_id": "jQwwqe", "step_type": "show_page_step",
             "name": "Premium Offer B", "sort_order": 0, "show_page_step_id": "QeOPbJ",
             "page": { "id": 1420, "public_id": "eVNQme", "name": "Premium Offer B",
-              "url": "https://acme.myclickfunnels.com/premium-offer-b", "external": false, "sdk_token": null } }
+              "url": "https://acme.myclickfunnels.com/premium-offer-b", "external": false, "custom_html_page": false, "sdk_token": null } }
         ] }
       ]
     }
@@ -506,13 +543,23 @@ Common node fields: `id`, `public_id`, `step_type` (short token, e.g.
 
 | `step_type` | Extra fields |
 |--------|--------------|
-| `show_page_step` | `show_page_step_id` (pass this to `funnel.show_page_step_id` on Create/Update Page to swap), `page: { id, public_id, name, url, external, sdk_token }` |
+| `show_page_step` | `show_page_step_id` (pass this to `funnel.show_page_step_id` on Create/Update Page to swap), `page: { id, public_id, name, url, external, custom_html_page, sdk_token }` |
 | `conditional_split_step` | `convergence_step_id` (where the branches rejoin), `branches: [{ branch: "matched"\|"unmatched", steps: [...] }]` |
 | `split_test_step` | `convergence_step_id`, `variants: [{ weight, steps: [...] }]` |
 
 Branch and variant `steps` arrays are flattened the same way (no nested
-container wrappers). `page.external` and `page.sdk_token` are always present
-on show-page nodes; `sdk_token` is `null` unless `external: true`.
+container wrappers). Each page object includes `external`, `custom_html_page`,
+and `sdk_token`. Use the flags to distinguish the three page types:
+
+| Page type | `external` | `custom_html_page` | `sdk_token` |
+|-----------|------------|--------------------|-------------|
+| ClickFunnels editor page | `false` | `false` | `null` |
+| ClickFunnels-hosted custom HTML page | `false` | `true` | The page's SDK token |
+| Externally hosted SDK page | `true` | `false` | The page's SDK token |
+
+A page is SDK-powered when `external` or `custom_html_page` is `true`.
+`external` describes hosting; a custom HTML page uses the SDK while ClickFunnels
+hosts it.
 
 ## Duplicate a funnel
 

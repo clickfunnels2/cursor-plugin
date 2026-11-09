@@ -477,7 +477,7 @@ If you get the error above and the page stays put, add the SDK host to
 
 ## Preview URLs - exercising the page before it reaches its real URL
 
-While the funnel is **not live** (test mode - the default for a new funnel), the
+While the funnel is **not live** (test mode - pass `live_mode: false`; a new funnel defaults to live payments), the
 page also works at URLs other than the one you registered: a platform preview
 host (`preview-xyz.yourplatform.dev`), a staging deploy, `http://localhost`.
 No extra registration or setup - the same page, same token.

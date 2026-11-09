@@ -184,6 +184,12 @@ immediate Payments AI cancel can first return `service_status: "canceled"` with 
 later `GET`. Poll `GET /api/v2/orders/:id` when those fields are not yet populated. The supplied
 `canceled_by` value is persisted before that sync and remains stable.
 
+An unpaid subscription order the processor holds no subscription for yet (a draft nobody has
+sent an invoice for or tried a card on: `service_status: "pending"` and a `billing_status`
+other than `paid`, `partially-paid` or `abandoned`) returns `404`, and nothing is canceled. Once
+an invoice has been sent or a payment attempted, the processor has the subscription and the
+cancel goes through as usual. To get rid of a draft instead, delete it.
+
 A Payments AI subscription with `service_status: "pending"` and `billing_status: "abandoned"`
 is voided immediately because it never activated, even if you send
 `effective_date: "next_renewal"`. The response has terminal `service_status: "voided"`, with no
@@ -344,7 +350,8 @@ curl -X GET \
 | `422 External orders have no processor-managed schedule` | Sent a schedule field on an external order. | External orders have no processor to command. Record the next billing date with `next_charge_at`. |
 | `422 The payment processor rejected the schedule change: ...` | The processor refused the write; its own message follows the colon. | The processor, not your request, refused it. A subscription the processor has not created yet is the usual cause - check the order's `service_status`. |
 | `422 The payment processor did not apply the change` | The requested date was not applied. | Re-read `GET /api/v2/orders/:id`, then correct and retry. |
-| `404 Not found` on a schedule field | The token may update the order but not change its schedule. | These two fields need the same permission as the in-app trial/renewal screens. Use a token whose user can manage orders in that workspace. |
+| `404 Not found` on a schedule field | The token may update the order but not change its schedule, or `renewal_at` was sent for an unpaid Payments AI subscription the processor holds no subscription for yet. | These two fields need the same permission as the in-app trial/renewal screens. Use a token whose user can manage orders in that workspace. An unpaid Payments AI draft has no renewal to move until an invoice is sent or a payment is attempted. |
+| `404 Not found` on a cancel | The order is an unpaid subscription the processor holds no subscription for yet (nothing sent or charged). | Nothing to cancel yet. Delete the draft instead, or cancel after an invoice has been sent. |
 | `422 External subscription orders cannot be canceled ...` | Tried to cancel an externally managed subscription. | Cancel it in the external system, then update the external order through the supported external-order API. |
 | `422 Invalid reason '...'. Valid values: ...` | `cancel_reason`/`reason` not in the processor's accepted set. | Send one of the listed values (they differ by processor). |
 | `422 Partial refunds are not supported ...` | Sent `partial: true` or an `amount`. | This endpoint only does a full refund of one charge. An `amount` is rejected rather than silently widened to the full charge. |
