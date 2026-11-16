@@ -63,6 +63,14 @@ page content as live content. Use `GET /api/v2/pages/:id` to read it back;
 the page's returned `url` is a computed address, not proof that the public
 page is reachable or that cache invalidation has finished.
 
+A ClickFunnels-hosted page outside a funnel is only public when its site is.
+Read `status` from `GET /api/v2/workspaces/:workspace_id/site`: on a `draft`
+(Coming Soon) site, visitors who are not signed in are sent to the site's
+coming-soon page instead of the page, and on a `password_protected` site they
+must enter the site password first. Funnel pages serve either way, and so do
+external (SDK) pages, which are served from the customer's own host. `status`
+is read-only; it is changed in the site settings in ClickFunnels.
+
 The API reference calls these HTTP operations
 [`updatePages`](https://developers.myclickfunnels.com/reference/updatepages)
 and [`getPages`](https://developers.myclickfunnels.com/reference/getpages).
@@ -108,8 +116,14 @@ The hosting model determines what the write does:
 - External SDK page: deploy the content on your own host. Updating
   `external_url` changes its ClickFunnels registration, not the hosted body.
 
-Writes request the existing cache invalidation. Read back the resource and
-check its URL separately when public delivery matters. There is currently no
+Writes request the existing cache invalidation, but the public URL can keep
+serving the previous version until that invalidation reaches the edge cache.
+Adding your own query parameter (`?cb=123`) does not get past that cache. To
+see what a write saved right away, load the page URL with `?preview=true`
+appended (`https://example.com/sales?preview=true`): that request skips the
+cache and renders the latest saved content. Use it to check your work, not as
+the link you give visitors. Read back the resource and check its URL
+separately when public delivery matters. There is currently no
 atomic release of every page in a funnel. The funnel's `live_mode` is for payment
 processing, not page visibility; see the [Funnels Skill](https://accounts.myclickfunnels.com/.well-known/funnels/skill.md#payment-mode-and-page-content).
 
@@ -575,3 +589,4 @@ SDK registration).
 | 404 "Not found" | Page does not exist, or token does not have access | Check page id and authorization |
 | 422 "external_url is required for external pages." | Missing `external_url` on `/pages/external` | Provide a valid http(s) URL |
 | 422 "sort_order ... is out of bounds" | Position past the funnel's step count | Use a value between 0 and the step count |
+| Public URL still shows the old content after a successful write | The edge cache has not been invalidated yet. A query parameter such as `?cb=123` is served from the same cache entry. | Load the URL with `?preview=true` to see the saved content now; the public URL catches up once the cache is invalidated. |

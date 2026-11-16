@@ -696,6 +696,12 @@ Content-Type: application/json
 { "emails_broadcasts_send_action": { "send_at": "2026-07-15T18:00:00Z" } }  # omit send_at to send now
 ```
 
+`send_at` is an exact moment: `2026-07-15T18:00:00Z` sends at 18:00 UTC whatever
+the broadcast's time zone (it is stored converted into that zone, to the minute).
+A `send_at` in the past returns `422`. Over MCP, `create` an
+`email_broadcast_send_action` with flat attributes, `{"send_at": "..."}`: the
+server adds the `emails_broadcasts_send_action` wrapper itself.
+
 Returns **201 Created** with the send action; it runs asynchronously, so fetch it
 at `GET /api/v2/emails/broadcasts/send_actions/{id}` for `started_at`/`completed_at`.
 `DELETE /api/v2/emails/broadcasts/send_actions/{id}` cancels a scheduled send: the

@@ -22,8 +22,8 @@
     {
       "name": "clickfunnels-emails",
       "url": "https://accounts.myclickfunnels.com/.well-known/emails/skill.md",
-      "digest": "sha256:e10c5b10db5d33bf23acef7b8d58dd2c33099a8e63b6bf05569e643751b6e089",
-      "sha256": "82a0081acc651bd7e6017000a59618e7f92eaa883ede780866c2b72b362aa383"
+      "digest": "sha256:71cd7dc15d411ec2465e986112f595dd9e1a756df928d24965e918588f0a015c",
+      "sha256": "8a54f2aaaf80434b4d8e57a6c398a294e523ee8d42e1048f0ee1d2f9ae48c419"
     },
     {
       "name": "clickfunnels-external-purchases",
@@ -70,14 +70,14 @@
     {
       "name": "clickfunnels-page-markup",
       "url": "https://accounts.myclickfunnels.com/.well-known/page-markup/skill.md",
-      "digest": "sha256:1da6c7db0d3636809a3a87f126846ffbb82ba6d32f83f8834251469bceca7596",
-      "sha256": "8b31e6b9438985108dfb41c1186830cc8c29850aade901a87d40e3ded4a92907"
+      "digest": "sha256:beed09981465a34e8b57971dfb02e2490a64bd9d2ee1f7d321c252799a780b37",
+      "sha256": "6ba4505922e2c0857fb33af1d2cbb737bed4a7da6d426bb9ef88927d61092abe"
     },
     {
       "name": "clickfunnels-pages",
       "url": "https://accounts.myclickfunnels.com/.well-known/pages/skill.md",
-      "digest": "sha256:7eea34cf3a1dfacc5a0bb8807104ec1e3ecf1cb32baba390d30ee15b00f6adbd",
-      "sha256": "0536e77c2dcc33c3d4dbd451e5d4396783fa95cfe0678e0023f3e780204154c4"
+      "digest": "sha256:100db933de7f33b39c7c56c934bffa91fcae6020a0deda268a3e218f3fa4d716",
+      "sha256": "f82eae7e94e32e179cce7818132088e9e4bf94e174f74bee69eb230d114ca4c7"
     },
     {
       "name": "clickfunnels-products",
@@ -94,8 +94,8 @@
     {
       "name": "clickfunnels-sdk-checkout",
       "url": "https://accounts.myclickfunnels.com/.well-known/sdk/add-checkout/skill.md",
-      "digest": "sha256:8460901b7f4fb8a7c95acb728d06fa647b7420434b447a6979b20b76919496b4",
-      "sha256": "f88a547c83129c602ae902e0103646b35fcb1f80f39811ec66f6377d5171b097"
+      "digest": "sha256:651674b96e7048c5a4134ff5b7f8becebdb9d0416793cf2cd8aed131b95aeb06",
+      "sha256": "8f8ebcf304e0d300d9506c8c5d248440d520640d0acdd790e82c1e43dee4cd5d"
     },
     {
       "name": "clickfunnels-sdk-external-page",

@@ -945,6 +945,22 @@ These are the DSL parser errors returned at validate time. HTTP-level errors
   and <script> tags all reach the page unchanged. <customhtml> takes no
   attributes of its own beyond the ones every element accepts.
 
+  A <script> inside <customhtml> runs inline, at the block's place in the
+  page, while the page is still loading. Elements that come after the block
+  do not exist yet, so document.querySelector('#my-btn') returns null for a
+  button further down. Wait for the page, or listen on the document:
+
+  <customhtml>
+    <script>
+      document.addEventListener('click', function (event) {
+        if (event.target.closest('#my-btn')) { /* ... */ }
+      });
+    </script>
+  </customhtml>
+
+  Code that only needs to run once the page is loaded can go in the page's
+  footer_code instead (see below).
+
   <customhtml>
     <style>
       .badge { background: #7c3aed; color: #fff; padding: 4px 12px;

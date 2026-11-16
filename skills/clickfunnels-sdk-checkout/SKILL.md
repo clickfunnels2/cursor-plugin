@@ -276,8 +276,15 @@ warning above):
       "variants": [
         { "id": "nJdDJd", "name": "Default", "product_type": "digital",
           "prices": [
-            { "id": "BNAqxN", "name": null, "amount": "149.0", "currency": "usd",
-              "payment_type": "one_time", "interval": null, "interval_count": null }
+            { "id": "BNAqxN", "name": null, "amount": "149.00", "currency": "usd",
+              "payment_type": "one_time", "interval": null, "interval_count": null,
+              "trial_amount": null, "trial_duration": null, "trial_interval": null,
+              "setup_amount": null, "compare_at_amount": "199.00" },
+            // A subscription with a $1.00, 7-day trial: $1.00 today, then $15.00 / month.
+            { "id": "QmPxRb", "name": "Monthly", "amount": "15.00", "currency": "usd",
+              "payment_type": "subscription", "interval": "months", "interval_count": 1,
+              "trial_amount": "1.00", "trial_duration": 7, "trial_interval": "days",
+              "setup_amount": null, "compare_at_amount": null }
           ] }
       ] }
   ],
@@ -292,7 +299,8 @@ server:
 {
   "line_items": [
     { "variant_id": "nJdDJd", "price_id": "BNAqxN", "quantity": 1,
-      "name": "The Course", "unit_amount": 14900, "line_amount": 14900 }
+      "name": "The Course", "unit_amount": 14900, "line_amount": 14900,
+      "due_now_amount": 14900, "trial": null, "setup_amount": null }
   ],
   "totals": { "subtotal": 14900, "discount": 0, "tax": 0, "shipping": 599,
               "total": 15499, "currency": "USD" },
@@ -308,7 +316,31 @@ Two money formats to keep straight:
 - **`CheckoutState` amounts are integer minor units** (cents; zero-decimal
   currencies like JPY are x1). These are the authoritative numbers to render.
 - **Catalog prices** (`products()`) carry `amount` as a decimal string
-  (e.g. `"149.0"`) - fine for displaying an offer, but totals come from state.
+  (e.g. `"149.00"`) - fine for displaying an offer, but totals come from state.
+  `trial_amount`, `setup_amount` and `compare_at_amount` are decimal strings
+  too, and every one of them (with `trial_duration` / `trial_interval`) is
+  `null` when the price has none. A free trial is `trial_amount: "0.00"` with a
+  duration. `compare_at_amount` is the "was" price to strike through.
+
+Trials and setup fees: a line's `unit_amount` / `line_amount` are the
+**recurring** price, while `due_now_amount` is what the buyer pays today for
+that line - the trial amount instead of the price, plus any setup fee. Show
+`due_now_amount` as the line's price, and on a recurring price, the recurring
+terms beside it ("$1.00 today, then $15.00 / month"). Never show `line_amount`
+as the line price on a trial: it would sit above a `totals.total` that only
+charges the trial.
+
+```jsonc
+{ "variant_id": "nJdDJd", "price_id": "QmPxRb", "quantity": 1, "name": "Monthly",
+  "unit_amount": 1500, "line_amount": 1500,          // the recurring price
+  "due_now_amount": 100,                            // charged today
+  "trial": { "amount": 100, "duration": 7, "interval": "days" },  // per unit
+  "setup_amount": null }                            // per unit, charged today
+```
+
+The interval in `trial.interval` and the catalog's `interval` is plural
+(`days`, `weeks`, `months`, `quarters`, `years`). Discounts, tax and shipping
+stay order-level, in `totals` only.
 
 Render from `onStateChange`, not from each mutator's resolved value - it also
 fires for SDK-internal repricing (e.g. an address change re-quoting shipping),
@@ -358,6 +390,18 @@ for a basic single-product checkout.
       return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(amount)
     }
 
+    // Price a line by what it charges today; a recurring line also states the
+    // price it moves to ("$1.00 today, then $15.00 / month"). A setup fee
+    // with no trial reads "$20.00 today, then $15.00 / month".
+    const recurringPrices = new Map()  // price id -> catalog ProductPrice
+    function linePrice(li, currency) {
+      const today = money(li.due_now_amount, currency)
+      const price = recurringPrices.get(li.price_id)
+      if (!price || !price.interval) return today  // one-time price
+      const every = price.interval_count > 1 ? `${price.interval_count} ${price.interval}` : price.interval.replace(/s$/, '')
+      return `${today} today, then ${money(li.line_amount, currency)} / ${every}`
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
       CfSdk.checkout.onStateChange((state) => {
         const errs = state.errors.filter((e) => e.code !== 'no_products')
@@ -367,7 +411,7 @@ for a basic single-product checkout.
 
         const rows = state.line_items.map((li) => {
           const row = document.createElement('p')
-          row.textContent = `${li.name} - ${money(li.line_amount, state.totals.currency)}`
+          row.textContent = `${li.name} - ${linePrice(li, state.totals.currency)}`
           return row
         })
         const total = document.createElement('strong')
@@ -376,6 +420,9 @@ for a basic single-product checkout.
       })
 
       CfSdk.products().then(({ products, bumpProducts }) => {
+        for (const product of [...products, ...bumpProducts]) {
+          for (const v of product.variants) for (const p of v.prices) recurringPrices.set(p.id, p)
+        }
         const variant = products[0]?.variants[0]
         const price = variant?.prices[0]
         if (price) CfSdk.checkout.setQuantity(variant.id, price.id, 1)
