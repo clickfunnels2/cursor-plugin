@@ -168,6 +168,7 @@ These are the DSL parser errors returned at validate time. HTTP-level errors
 | 400 "Markup is not valid PML: `<popup>` is the page's popup and goes at the top level" | A `<popup>` inside a section, row, column or flex, or more than one `<popup>` | Put one `<popup>` at the top level, beside the page's sections |
 | 400 "Markup is not valid PML: unknown element(s) ... inside `<navigation>`" (or `<select>`, `<submenu>`, `<popup>`), or "`<icon>` takes no child elements" | A child element the element does not take | Check the element's allowed children below |
 | 400 "Invalid attribute(s) '...' on `<element>`" | Attribute is not allowed on that element (e.g., `margintop` on `<input>`) | Check the per-element attribute lists below |
+| 400 "Could not resolve button target reference: top" | A button's `scroll-target` (or `show-targets` / `hide-targets`) names an id that no element in the markup carries | Put that id on the target: `<section id="top">` for `scroll-target="top"` |
 | 400 "Markup appears to be truncated: ..." | The `markup` you sent stops mid-construct - a tag, attribute value, comment or `<customhtml>` body never closes, or elements are still open at the end of the document. Almost always means your markup was cut off before you finished writing it (an output token limit, a truncated buffer). | Re-send the complete document. Do NOT retry with the same truncated string, and do NOT try to "repair" it by sending only the tail - `markup` replaces the whole page, so a partial document deletes everything after the cut-off point. If the page is long, add the pixel or code with `head_code`/`footer_code` instead of rewriting the body. |
 
 ================================================================================
@@ -431,7 +432,15 @@ These are the DSL parser errors returned at validate time. HTTP-level errors
 ================================================================================
 
   All text elements share:
-    size        xl(48px) | l(40px) | m(32px) | s(24px)
+    size        xl | l | m | s - the sizes in the workspace's style guide, which
+                vary by workspace. Measured on one workspace's style guide with no
+                font overrides (desktop / phone, px):
+                  headline     xl 65/33  l 50/26  m 41/21  s 26/17
+                  subheadline  xl 30/21  l 24/17  m 18/14  s 13/11
+                  paragraph    xl 24/27  l 20/21  m 18/17  s 16/14
+                A subheadline at size="s" is caption-sized there (13px, 11px on
+                phones): do not use it for a hero sub-line or a card title. When
+                the size must be exact, set fontsize and fontsize-mobile instead.
     fontsize    Custom size, overrides preset. Must include unit: "72px" "5rem" "100px"
     fontsize-mobile  Size at the mobile breakpoint (<=770px), same format as fontsize.
                 Set it whenever you set fontsize: otherwise the style guide's mobile
@@ -515,6 +524,9 @@ These are the DSL parser errors returned at validate time. HTTP-level errors
     One HTTP call. DSL markup in. Full rendered page out.
   </paragraph>
 
+  Spacing: every headline, subheadline and paragraph has 10px above and below
+  its text, so two paragraphs with margintop="0" sit 20px apart.
+
 ### Inline Formatting
 
   Works inside all text elements, and inside list and accordion <item> text:
@@ -574,10 +586,27 @@ These are the DSL parser errors returned at validate time. HTTP-level errors
 
 ### <video>
 
-  Auto-detects YouTube, Vimeo, Wistia, HTML5 video.
+  Auto-detects YouTube, Vimeo, Wistia, TikTok and HTML5 video from src.
+
+  Attributes:
+    src           Video URL. For TikTok, the video's link or a short link
+                  from the app's Share menu (vm.tiktok.com/...,
+                  tiktok.com/t/...), which is stored as the full link it
+                  opens.
+    aspect-ratio  landscape (16:9, default) | vertical (9:16). TikTok and
+                  YouTube Shorts links default to vertical.
+    width         Maximum width in px, e.g. "400". The video still shrinks
+                  to fit its column.
+    height        Height in px. With width, sets a custom width:height
+                  ratio. Ignored when vertical.
+    align         left | center | right: places a video narrower than its
+                  column (a width, or vertical)
+
+  A vertical video with no width is never taller than the screen.
 
   <video src="https://www.youtube.com/watch?v=XXXXXXXXXXXX"/>
-  <video src="https://vimeo.com/XXXXXXXXX"/>
+  <video src="https://vimeo.com/XXXXXXXXX" width="640"/>
+  <video src="https://www.tiktok.com/@user/video/XXXXXXXXXXXXXXXXXXX"/>
 
 ### <divider>
 
@@ -589,20 +618,27 @@ These are the DSL parser errors returned at validate time. HTTP-level errors
 ### <videopopup>
 
   An image that opens a video in a lightbox when clicked. Detects YouTube,
-  Vimeo, Wistia and HTML5 video from src, as <video> does.
+  Vimeo, Wistia, TikTok and HTML5 video from src, as <video> does.
 
   Attributes:
     src           Video URL
     image         Thumbnail image URL (default: a "watch video" placeholder)
     alt           Thumbnail alt text
     width         Thumbnail width: "400px" | "100%"
-    align         left | center | right
+    align         Thumbnail alignment: left | center | right
     radius        sm | md | lg | xl | full | "20px"
     close-button  show (default) | hide
     backdrop      Color behind the video, e.g. "rgba(0,0,0,0.8)"
+    aspect-ratio  The video's: landscape (default) | vertical. TikTok and
+                  YouTube Shorts links default to vertical.
+    video-align   left | center (default) | right: places a vertical video,
+                  which is narrower than the popup. A landscape video fills
+                  the popup, so it has no effect there.
 
   <videopopup src="https://www.youtube.com/watch?v=XXXXXXXXXXXX"
               image="https://cdn.example.com/thumb.jpg" width="100%" radius="lg"/>
+  <videopopup src="https://www.tiktok.com/@user/video/XXXXXXXXXXXXXXXXXXX"
+              image="https://cdn.example.com/thumb.jpg" video-align="left"/>
 
 ### <audio>
 
@@ -1115,8 +1151,10 @@ These are the DSL parser errors returned at validate time. HTTP-level errors
                    Font: Playfair Display / Poppins / Space Grotesk / Bebas Neue
   SECTION TITLE    size="l" or fontsize="40px-56px" weight="bold"
                    Font: same as hero headline
-  CARD TITLE       size="s" or fontsize="22px-28px" weight="bold" or "semibold"
-  EYEBROW LABEL    size="s" weight="bold" color="<accent>" align="center"
+  HERO SUB-LINE    <subheadline size="m"> or size="l" (18-24px), or fontsize="20px"
+  CARD TITLE       <headline size="s"> (about 26px) or fontsize="22px-28px" weight="bold" or "semibold"
+                   (not <subheadline size="s">, about 13px)
+  EYEBROW LABEL    <paragraph size="s"> weight="bold" color="<accent>" align="center"
                    (small ALL-CAPS or styled label above the main headline)
   BODY COPY        size="m" or size="s" weight="normal" leading="relaxed"
                    Font: Inter / Source Sans Pro / Lato

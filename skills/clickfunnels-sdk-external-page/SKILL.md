@@ -171,6 +171,163 @@ own, in the regular DOM. To also feed a third-party provider, run its widget
 alongside your own form; the SDK cannot capture submissions from markup it
 cannot see.
 
+## Submit a contact from code
+
+Use a form when the page has one. Use `CfSdk.contact.submit()` when your own
+code owns the sign-up: a React form, an in-app flow, or a call that runs after
+the visitor does something. It sends the contact through the same checks as the
+form and answers with JSON. It never navigates the page. A call made while the
+page is still loading waits for the SDK's first check of the page and for the
+visit to start, so the opt-in is recorded against the visit.
+
+Send the contact when the visitor signs up, not as the page loads. In the first
+seconds of a visit, its landing page and campaign tags are not saved yet. An
+opt-in sent then from a first-time visitor is recorded with no first-touch
+campaign, and any opt-in sent then is marked as from an untracked visit. The
+visit is filled in a few seconds later, but that opt-in is not corrected.
+
+```js
+const result = await window.CfSdk.contact.submit({
+  email: 'ada@example.com',
+  first_name: 'Ada',
+  last_name: 'Lovelace',
+  phone_number: '+15555550100',        // optional
+  custom_attributes: { plan: 'pro' },  // optional, text values
+})
+
+if (result.ok && result.status === 'succeeded') {
+  // On the funnel's last step, next_url is the page the visitor is already on.
+  // Move only when it points somewhere else.
+  const next = new URL(result.next_url ?? location.href)
+  if (next.origin !== location.origin || next.pathname !== location.pathname) location.assign(next.href)
+} else if (result.ok && result.status === 'preview') {
+  // Preview URL. Nothing was saved.
+} else {
+  // result.error is a code and result.message is for display.
+  // result.fields maps each input's data-cf-element name (for example
+  // "email" or "first-name") to its message.
+}
+```
+
+Every field is optional: `email`, `first_name`, `last_name`, `name` (split into
+first and last on the server), `phone_number`, and `custom_attributes`. The call
+always resolves. It never throws.
+
+There are three results:
+
+- `{ ok: true, status: 'succeeded', next_url }`. The contact is saved and the
+  opt-in ran. `next_url` is the funnel's next step. On the last step it is the
+  page the visitor is already on. The SDK does not navigate. Go there yourself
+  if you want to.
+- `{ ok: true, status: 'preview' }`. The page is served from an unregistered
+  preview URL. Nothing was saved.
+- `{ ok: false, status: 'failed', error, message, fields? }`. No form
+  submission and no opt-in event is recorded. The codes are:
+  - `contact_invalid`: a field failed validation. `fields` has the message for
+    each field. No invalid email is stored.
+  - `missing_params`: no contact fields were sent.
+  - `invalid_params`: a contact field or custom attribute value was not text.
+  - `page_not_in_funnel`: the page is registered but is not a funnel step.
+  - `sdk_inactive`: the SDK is dormant on this page. No request was sent.
+  - `network_error`: no answer came back. The request may never have arrived,
+    or the contact may have been saved and the answer lost.
+  - `request_failed`: any other refusal, such as a URL or origin mismatch or a
+    team without an active subscription. `message` says what happened; for a
+    URL or origin mismatch it ends with the server's reason, for example
+    `Contact request refused: url_mismatch`.
+
+Rules:
+
+- The page must be registered and placed in a funnel as a step, as for forms.
+- The address the page is served from must match the registered address.
+- Custom attributes are created on the fly, the same way as form fields.
+- Tags and lists cannot be set this way.
+- The opt-in event fires, so automations that start on opt-in run.
+- Each call is one submission. Disable your submit button while a call is
+  pending.
+- `next_url` carries a one-minute token when the next step is on another
+  origin. The page decides whether to go there. Do not log `next_url` or store
+  it.
+- Nothing is saved from a preview URL. The call answers `preview`.
+
+## Affiliates and campaign tags
+
+ClickFunnels credits an affiliate, and records which campaign a visitor came
+from, from what the SDK reports. It learns both in two ways.
+
+**From the address. There is nothing to write.**
+
+- `?aff=<code>` on the address of a page that runs the SDK is kept for up to 45
+  days and sent with every form submit and checkout from that site. It is read
+  when the page loads and when the address changes without a page load (a
+  router link), including a link that only adds `?aff=` to the same path. A
+  link that stays on the address as the visitor moves between routes is one
+  click: it keeps the time it was first read.
+- `utm_source`, `utm_medium`, `utm_campaign`, `utm_term` and `utm_content` on
+  the address are recorded on the visit when the visit starts, on the first
+  page with the SDK that the visitor opens. A visit lasts four hours. Tags that
+  first appear on a later page of the same visit are not recorded.
+
+**From code.** When your app captured the click itself, on a route with no page
+token or in its own storage, hand it over:
+
+```html
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    CfSdk.attribution.set({
+      affiliate_code: 'janedoe',
+      affiliate_clicked_at: '2026-11-18T14:03:00Z', // when the visitor clicked
+      utm_source: 'facebook',
+      utm_medium: 'cpc',
+      utm_campaign: 'launch',
+    })
+  })
+</script>
+```
+
+- **Call it in a `DOMContentLoaded` handler, on every page load.** The `sdk.js`
+  tag has `defer`, so `CfSdk` does not exist yet in an inline script that runs
+  while the page is still being read; it does by `DOMContentLoaded`. Campaign
+  tags reach the visit only if they are set before the visit is reported, which
+  happens once the SDK has started. A call made later than that logs a console
+  warning and the tags are not on that visit. The affiliate can be set at any
+  time before the form is submitted or the buyer pays. (With a tag that has no
+  `defer`, you can call it right after the tag.)
+- Campaign tags set from code are recorded only when this page load starts a
+  new visit, because they are saved with the visit when it starts. They are
+  dropped, and nothing is logged, when a visit is already running: on a later
+  page of the same visit, when the visitor comes back within the four hours a
+  visit lasts, and when the visitor arrives from an earlier funnel step, whose
+  link carries the visit over (it has a `__cf_token`). The affiliate is not
+  affected.
+- Every key is optional and only the keys you pass are touched. `null` or `''`
+  clears a campaign tag. The five `utm_*` tags above are the only campaign tags.
+- `affiliate_code` needs `affiliate_clicked_at`, the time the visitor clicked
+  the affiliate's link, as an ISO 8601 string or a `Date`. Save that time with
+  the code when your app captures the click, and pass the saved time on every
+  call. The click keeps that time, a time in the future is treated as now, and
+  an older click never replaces a newer one. A click more than 45 days old has
+  expired and is not stored, as a link's would have.
+- Without a time that can be read, the affiliate is not stored and the call
+  logs a console warning. Do not pass the current time on every page load in
+  its place: that would make an old click look new on each visit and take the
+  credit from an affiliate the visitor clicked later.
+- `affiliate_code` must be one of the workspace's affiliate codes. An unknown
+  code credits no one and raises no error.
+- The five campaign tags are one set, so one visit never mixes two campaigns.
+  An empty or blank tag on the address (`?utm_term=`, an ad placeholder nobody
+  filled in, or only spaces) does not count. When the real address has any of them with a
+  value, it wins and no tag is added
+  from code.
+- The call does not need the page's `cf-page-token`. A single-page app can make
+  it on the route the visitor lands on, even one with no token: the affiliate is
+  kept for the whole site, and the campaign tags are held until the visitor
+  reaches a route with a token in the same page load.
+
+Each time the SDK initializes on a route, it records a page view for that page,
+so a single-page app that swaps its token per route gets a page view per route
+with no extra call.
+
 ## Element registry
 
 | Value                     | Tag(s)                                  | Purpose                                            |

@@ -123,7 +123,32 @@ see what a write saved right away, load the page URL with `?preview=true`
 appended (`https://example.com/sales?preview=true`): that request skips the
 cache and renders the latest saved content. Use it to check your work, not as
 the link you give visitors. Read back the resource and check its URL
-separately when public delivery matters. There is currently no
+separately when public delivery matters.
+
+**The visitor URL of a page in a funnel is its step's path, not the page's
+`url`.** Creating a page with `funnel` gives the funnel step the path you asked
+for and the page itself a suffixed one: the response carries
+`"show_page_step": {"current_path": "/ebook-order"}` and
+`"url": "https://<domain>/ebook-order--4aa39"`. Give people
+`https://<funnel domain>` + `show_page_step.current_path`. The step is served on
+the funnel's domain, which can differ from the host in the page's `url`: read
+the funnel (`GET /api/v2/funnels/:id`) and, when its `domain_id` is set, use
+that domain's `name` (`GET /api/v2/domains/:id`). When the funnel's
+`domain_id` is null, the step is on the workspace's default site domain, which
+the page's `url` does not reliably show (a shared page, or a page from another
+site, keeps its own host): get that domain's id from
+`GET /api/v2/workspaces/:workspace_id/url_redirects/availability?current_path=/any-path`
+with no `domain_id` (the response's `domain_id`) and read its `name`. The
+suffixed `url` (also the
+`page.url` in a funnel's `structure` read) shows the page on its own, outside
+the funnel: an opt-in form there does not move the visitor on to the next step.
+Two exceptions. An external (SDK) page's `show_page_step.current_path` is null:
+its visitor link is its own `url`, the external address you registered. And a
+page linked into several funnels carries one `show_page_step`, by default the
+first one, which may belong to another funnel: read it through
+`GET /api/v2/workspaces/:workspace_id/pages?filter[funnel_ids]=<funnel_id>` so
+the step shown is the one in your funnel.
+There is currently no
 atomic release of every page in a funnel. The funnel's `live_mode` is for payment
 processing, not page visibility; see the [Funnels Skill](https://accounts.myclickfunnels.com/.well-known/funnels/skill.md#payment-mode-and-page-content).
 

@@ -216,9 +216,18 @@ Notes:
   still-empty inputs here. Values you set (or the visitor types) always win.
   Separate first/last values are combined for a single `name` input; a single
   `name` value is not split into separate first/last inputs.
-- On success there is **no success event** - the browser follows the server's
-  redirect to the funnel's next step. Failures surface through `onError`
-  (below) and the pay button re-enables.
+- On success the browser follows the server's redirect to the funnel's next
+  step. Failures surface through `onError` (below) and the pay button
+  re-enables. A page that wants to hear about the payment, or to keep the
+  buyer where they are, subscribes with `CfSdk.checkout.onPayment` - see
+  "Know when a payment succeeds, fails or needs the bank".
+- **Give the funnel a step after the checkout** - a thank-you page, or an OTO
+  page followed by one - so the buyer finishes on your own site. When the
+  checkout page is the funnel's last step there is nowhere to send them, so
+  the buyer lands on a plain ClickFunnels-hosted order receipt that confirms
+  the order and shows a reference, and nothing else. The same goes for an OTO
+  accepted on the funnel's last step. The other way to finish on your own site
+  is to keep the buyer on the page with `onPayment`.
 
 ## Put the product in the cart
 
@@ -264,6 +273,7 @@ run your code on `DOMContentLoaded` or later.
 | `CfSdk.checkout.onPending(fn)` | unsubscribe `fn` | A mutation or charge is in flight |
 | `CfSdk.checkout.onError(fn)` | unsubscribe `fn` | A state carrying errors was committed |
 | `CfSdk.checkout.onOtoOutcome(fn)` | unsubscribe `fn` | OTO pages only - see "One-time offers" |
+| `CfSdk.checkout.onPayment(fn)` | unsubscribe `fn` | A payment attempt needs the bank, failed, or succeeded - see "Know when a payment succeeds, fails or needs the bank" |
 
 `CfSdk.products()` resolves with the catalog (empty arrays - never a
 rejection - when checkout isn't configured for the page, alongside the console
@@ -348,6 +358,119 @@ so it is the one place your totals can't go stale.
 
 An empty cart reports a `no_products` validation error; treat it as the
 normal starting state rather than something to alarm the buyer with.
+
+## Know when a payment succeeds, fails or needs the bank
+
+`CfSdk.checkout.onPayment(fn)` tells your page about each step of a payment
+attempt made on it: the pay button, or a one-click offer accept. Use it to show
+your own confirmation, to keep the buyer on the page, or to record the purchase
+in your own analytics. It returns an unsubscribe function, like the other
+subscriptions.
+
+```js
+CfSdk.checkout.onPayment((event) => {
+  if (event.status === 'succeeded') {
+    showThanks(event.order_id)
+    return false // stay on this page; leave this out and the SDK goes to event.next_url as before
+  }
+  if (event.status === 'requires_action') showNote('Confirm the payment with your bank.')
+  if (event.status === 'failed') recordFailure(event.code)
+})
+```
+
+`fn` receives one of three records:
+
+```jsonc
+// The checkout succeeded. Sent once, before the SDK leaves the page.
+{ "status": "succeeded",
+  "order_id": "AbCdEf",   // the order's public id
+  "event_id": "AbCdEf",   // see "Counting a purchase once" below
+  "value": 15499,         // the total your page was shown: totals.total of CheckoutState, minor units
+  "currency": "USD",      // totals.currency of CheckoutState
+  "test_mode": true,      // true for an order placed in test mode
+  "next_url": "https://example.com/thank-you?__cf_token=..." } // where the SDK goes next, or null
+
+// The buyer's bank wants a confirmation step.
+{ "status": "requires_action",
+  "action": "challenge",  // "challenge": shown in place. "redirect": the browser leaves for the bank now
+  "order_id": "AbCdEf", "test_mode": true }
+
+// The attempt ended without the checkout reporting a payment.
+{ "status": "failed",
+  "code": "card_declined", "message": "Your card was declined.",
+  "source": "gateway",    // the first entry of state.errors, which onError also carries
+  "test_mode": true }
+```
+
+No record carries card details. On `succeeded`, `order_id` is always present.
+`event_id` is `null` when the server could not report it. `value` and
+`currency` are the total the page was showing when the buyer paid; they are
+`null` when the page had not priced exactly what was bought. That can happen
+on a one-click offer page, and when the buyer changes the cart and pays before
+the new total has come back.
+
+A `failed` record with `source: "sdk"` (`network_error`, `request_failed`)
+means the SDK got no answer. The request may never have arrived, or the answer
+to a payment that did go through may have been lost. Do not tell the buyer the
+payment failed; tell them it could not be confirmed, and check for the order
+before they try again.
+
+**Subscribe when the page loads.** These are events, not state: a subscriber
+added after a payment hears nothing about it. That includes the `failed` record
+for a buyer the bank sent back, which is announced once as the page starts.
+(`onError` still replays the current errors to a late subscriber.)
+
+**Keeping the buyer on your page.** Return exactly `false` from a `succeeded`
+record and the SDK does not navigate.
+
+- Return it straight away. A promise, or any other value, lets the SDK navigate
+  as before. With several subscribers, one `false` is enough.
+- The form the buyer paid with stays disabled, so a second click on it cannot
+  charge again. Show your own confirmation in its place; do not re-enable the
+  form or mount a fresh one beside it.
+- The record is a signal for the page, not proof for your server: anyone can
+  run script in a browser. Grant access from an order webhook, or by reading the
+  order through the API. `order_id` is the order's `public_id` there.
+- `next_url` is where the SDK would have gone. If you send the buyer there
+  yourself, do it within a minute: it carries a one-minute sign-in token for the
+  next step and, when that step is a one-click offer, the one-minute grant the
+  offer needs. A funnel with a one-click offer after the checkout should let the
+  SDK navigate. Because of those tokens, use `next_url` only to navigate: do not
+  log it or pass the whole record to an analytics tool.
+- On the funnel's last step `next_url` is the hosted order receipt. A page that
+  keeps the buyer never shows it.
+- **A bank redirect is the exception.** When the bank takes the buyer away
+  (`requires_action` with `action: "redirect"`, which is every bank confirmation
+  on Payments AI), this page is gone by the time the payment completes, so no
+  `succeeded` record reaches it. The buyer comes back to the funnel's next step,
+  or to this page with a `failed` record if the bank refused. If those buyers
+  must also finish on your own site, give the funnel a step after the checkout
+  as well.
+
+**Counting a purchase once.** When the site has a Meta pixel and access token
+set in ClickFunnels, ClickFunnels sends a server-side `Purchase` to Meta for an
+order's first approved charge, and `event_id` is the event id it uses. If your
+page also fires a browser `Purchase`, pass the same id and Meta counts the two
+as one:
+
+```js
+if (event.value > 0) {
+  fbq('track', 'Purchase',
+    { value: event.value / 100, currency: event.currency },
+    { eventID: event.event_id })
+}
+```
+
+- `value` is in minor units and pixels expect a decimal amount, so divide by
+  100 (not for zero-decimal currencies such as JPY).
+- An order with nothing charged today, such as a free trial or a fully
+  discounted order, has no server-side `Purchase`. Do not fire a browser one
+  for it; that is what the `value > 0` check is for.
+- ClickFunnels' server-side Google Analytics purchase uses a different id, so
+  do not send a second `purchase` to the same Google Analytics property from the
+  page.
+- `event_id` is also the order's `public_id` in the API and in order webhooks,
+  which lets your server match the browser's record to its own.
 
 ## Advanced example - custom summary and order bump
 
@@ -555,7 +678,9 @@ How it works and what to expect:
 - The offered line rides the accept button's standard `value` attribute as
   `"variantId|priceId"`. Clicking it charges the saved payment method and the
   browser follows the redirect to the next step; `oto-decline` advances
-  without charging. As with `pay`, success is a redirect, not an event.
+  without charging. As with `pay`, an accepted offer is announced to
+  `onPayment` subscribers before the redirect, as its own order with its own
+  `order_id` and `event_id`; a decline is not a payment and announces nothing.
 - The OTO elements are **intentionally formless** - an OTO never collects an
   email or card. (They're the exception to the "submission elements need a
   `<form>`" rule.) A physical offered product still needs a shipping address,
@@ -664,36 +789,108 @@ it.
 
 ### Payments AI (Rebilly FramePay) card fields
 
-On Payments AI, the iframe contains only the input text, so this gateway reads
-just the text-level custom properties: `color-text`,
-`color-background`, `font-family`, `font-size`, `color-placeholder`, and
-`color-primary` / `color-danger` as the focus / invalid **text** color.
-`--cfsdk-checkout-color-border`, `--cfsdk-checkout-border-radius`,
-`--cfsdk-checkout-input-shadow`, and `color-scheme` are ignored.
+Payments AI renders three card fields: number, expiry and CVV. Each one is
+three layers, and each layer is styled in a different place:
 
-The supported host-page hooks are `.cf-sdk-card-field`,
-`.cf-sdk-card-number`, `.cf-sdk-card-expiration`, and `.cf-sdk-card-cvv`.
-Use them for layout and outer treatment only. Their descendants belong to the
-payment provider; do not query, replace, or style provider class names.
+| Layer | What it is | Styled with |
+| --- | --- | --- |
+| The text inside the field | The provider's iframe | The text-level custom properties |
+| The provider's own box | A `<div>` FramePay adds around its iframe | One reset rule (below) |
+| Your box | `.cf-sdk-card-field`, the wrapper the SDK creates | Your own CSS |
+
+**The text.** The iframe contains only the input text, so this gateway reads
+just the text-level custom properties: `color-text`, `color-background`,
+`font-family`, `font-size`, `color-placeholder`, and `color-primary` /
+`color-danger` as the focus / invalid **text** color.
+`--cfsdk-checkout-color-border`, `--cfsdk-checkout-border-radius`,
+`--cfsdk-checkout-input-shadow`, and `color-scheme` are ignored. A property
+you leave unset keeps FramePay's default, and the properties are read once,
+when the fields mount.
+
+**The provider's box.** FramePay draws its own white, rounded, bordered box,
+36px tall, inside every `.cf-sdk-card-field`. Left alone, the card fields look
+like FramePay whatever the rest of your form looks like, and giving
+`.cf-sdk-card-field` a border of your own puts a box inside a box. Remove
+FramePay's box with this rule, exactly as written:
 
 ```css
+.cf-sdk-card-field .rebilly-framepay.rebilly-input {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+}
+```
+
+Keep the `.cf-sdk-card-field` in front. FramePay's stylesheet loads after
+yours, and the extra class is what lets this rule win.
+
+**Your box.** `.cf-sdk-card-field` (also `.cf-sdk-card-number`,
+`.cf-sdk-card-expiration` and `.cf-sdk-card-cvv`) is ordinary DOM in your
+document. Give it the border, radius, background and height of your other
+inputs. FramePay's row stays 36px tall, so pad the wrapper to reach your input
+height.
+
+**Focus and invalid states.** The focused element is inside the provider's
+iframe, so `.cf-sdk-card-field:focus-within` is not reliable (in Chrome it
+does not match). FramePay marks the field instead: its box gets the class
+`rebilly-framepay-focus` while it has focus and `rebilly-framepay-invalid`
+while its contents are invalid. Select on those with `:has()`.
+
+Put together, three card fields that match a form whose inputs are 48px tall
+with a 1px border:
+
+```css
+:root {
+  --cfsdk-checkout-color-text: #1a202c;
+  --cfsdk-checkout-color-placeholder: #a0aec0;
+  --cfsdk-checkout-color-background: #ffffff;
+  --cfsdk-checkout-font-family: ui-sans-serif, system-ui, sans-serif;
+  --cfsdk-checkout-font-size: 16px;
+}
+
 [data-cf-element="payment-method"] {
   display: grid;
   gap: 12px;
 }
 
 .cf-sdk-card-field {
+  box-sizing: border-box;
   min-width: 0;
+  height: 48px;
+  padding: 5px 12px;       /* (48 - 2 for the border - 36 for FramePay's row) / 2 */
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #ffffff;
 }
 
-.cf-sdk-card-field:focus-within {
+.cf-sdk-card-field .rebilly-framepay.rebilly-input {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+}
+
+.cf-sdk-card-field:has(.rebilly-framepay-focus) {
   outline: 2px solid #2b6cb0;
   outline-offset: 1px;
 }
+
+.cf-sdk-card-field:has(.rebilly-framepay-invalid) {
+  border-color: #c53030;
+}
 ```
 
+`rebilly-framepay`, `rebilly-input`, `rebilly-framepay-focus` and
+`rebilly-framepay-invalid` are the only provider class names to rely on, and
+only in the selectors shown here. Everything else inside a
+`.cf-sdk-card-field` belongs to the payment provider; do not query, replace,
+or style it.
+
 Stripe draws the full Payment Element inside its iframe, so style it with the
-custom properties rather than these Payments AI-only wrapper hooks.
+custom properties rather than these Payments AI-only hooks. The
+`.cf-sdk-card-field` rules match nothing on a Stripe checkout, so one
+stylesheet can serve both gateways.
 
 ### The address autocomplete dropdown
 
@@ -776,7 +973,10 @@ deep-link into the OTO page and expect the one-click to work (see above).
 While the funnel is in test mode, the SDK shows a **debug overlay badge** on
 the page. Open it - it shows the token, init status, the page URL vs. the
 expected URL, and the failure reason. It answers most "why isn't this
-working" questions directly. Beyond that:
+working" questions directly. The badge sits in the bottom right corner (a
+small pill on a narrow screen) and moves to the top of the screen whenever it
+would cover a `pay`, `oto-accept` or `oto-decline` button, so it never hides
+the control you are testing. Beyond that:
 
 - **Nothing loads, or the card fields never mount, on a page served with a
   Content Security Policy**: a checkout page needs the three SDK directives
@@ -788,6 +988,11 @@ working" questions directly. Beyond that:
   gateway, so those hosts need `script-src` and `frame-src` (FramePay also
   loads a stylesheet, so `style-src`). Each provider documents its full CSP
   requirements; start there if a field renders blank.
+- **After paying, the buyer lands on a ClickFunnels "Your order is confirmed"
+  page instead of your own**: the page they paid on is the funnel's last
+  step. Add a thank-you step after it, or keep the buyer on the page with
+  `CfSdk.checkout.onPayment`. In test mode that receipt also carries a note
+  saying so.
 - **`403 url_mismatch` on init**: the browsed URL must match the registered
   page URL exactly, path included - `/oto` and `/oto.html` are different
   pages. Fix either the registered URL or the link.

@@ -3,7 +3,7 @@ name: clickfunnels-workflows
 description: >
   Build marketing-automation Workflows programmatically - triggers, ordered
   action steps (email, tagging, attributes, opportunities, course/community
-  access, webhooks, delays), conditional / A-B branching, enabling, and manually
+  access, webhooks, delays, goal steps), conditional / A-B branching, enabling, and manually
   enrolling contacts or reading who is currently at a step. Use this skill when
   you need to create, configure or inspect an automation (welcome series, lead
   routing, tagging, onboarding) via the public API or MCP.
@@ -203,12 +203,54 @@ Content-Type: application/json
 | `revoke_community_access_step` | Revoke community space access | `space_ids` (array) |
 | `create_opportunity_step` | Create a sales opportunity | `name`, `value`, `assignment_strategy` in `unassigned`/`membership`/`pipeline`/`round_robin`, `move_existing`, `sales_pipeline_id`, `sales_pipelines_stage_id`, `membership_id`, `membership_ids` |
 | `move_step` | Hand the contact to another workflow | `workflow_id` (cannot be its own workflow or an archived one -> 422) |
+| `goal_step` | Pull a waiting contact forward once they meet a condition | `condition.filter_id` (a stored contact filter id). No branches. See [Goal steps](#goal-steps). |
 | `conditional_split_step` | Branch on a stored filter | `condition.filter_id` (a Refine filter public id) |
 | `split_test_step` | Weighted A-B branch | `variants`: exactly 2 `{ "weight": n }`, integers summing to 100 (default 50/50) |
 
 Each step response carries a `state`: `active` (set up and will run), `notSetup` (accepted but
 non-functional - fix the settings), or `notDefined` (a placeholder). **Always check `state`** -
-a `notSetup` step is silently skipped at run time.
+a `notSetup` step is silently skipped at run time. The one exception is `goal_step`: check
+`condition.is_setup` instead (see below).
+
+### Goal steps
+
+Use **one `goal_step` instead of repeating the same conditional split before every email.**
+A nurture sequence that should stop once the contact buys is:
+
+```
+email -> delay -> email -> delay -> email -> goal_step (contact has tag "purchased") -> post-purchase steps
+```
+
+While a contact waits at a delay (or a pause step), any new activity for them, such as a tag
+being applied or a form being submitted, checks the goal steps ahead of them. The first one
+whose filter they match pulls them straight to it, skipping everything in between, and they
+continue from the step after the goal. A contact who reaches the goal in normal order just
+passes through.
+
+1. Build the condition as a stored contact filter (see the
+   [Refine Filters Skill](https://accounts.myclickfunnels.com/.well-known/refine-filters/skill.md)), e.g. `tags.id` `in`
+   `["<tag_id>"]`, and keep the returned `id` (or `public_id`). It must be a contact filter:
+   an order filter is rejected with `422`.
+2. Add the goal after the steps it should cut short, usually on the trunk:
+
+```http
+POST /api/v2/workflows/:workflow_id/steps
+Authorization: Bearer <access_token>
+Content-Type: application/json
+
+{ "workflows_step": {
+    "name": "Purchased",
+    "step_type_settings": { "goal_step": { "condition": { "filter_id": "<filter_id>" } } }
+} }
+```
+
+The response echoes `"goal_step": { "condition": { "filter_id": 6002, "is_setup": true } }`.
+
+- Only goals **ahead** of the contact count. A goal inside a split branch counts only for
+  contacts the split would route into that branch, so prefer the trunk.
+- Change the condition with `PATCH /api/v2/workflows/steps/:id` and a new `condition.filter_id`.
+- A goal created without `filter_id` is accepted with `is_setup: false` and never pulls anyone
+  forward, but its `state` still reads `active`.
 
 ## Step stats
 
@@ -319,7 +361,7 @@ Content-Type: application/json
 A step added with no placement after a split lands **after** that split's convergence (i.e. on
 the main trunk again). The `filter_id` for a conditional split is the public id of a stored
 Refine filter in this workspace (see the
-[Refine Filters Skill](https://accounts.myclickfunnels.com/.well-known/refine-filters/skill.md)); raw numeric ids are rejected.
+[Refine Filters Skill](https://accounts.myclickfunnels.com/.well-known/refine-filters/skill.md)); its numeric `id` is accepted too.
 
 ## Enabling, disabling
 

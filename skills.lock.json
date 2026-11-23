@@ -40,8 +40,8 @@
     {
       "name": "clickfunnels-funnels",
       "url": "https://accounts.myclickfunnels.com/.well-known/funnels/skill.md",
-      "digest": "sha256:b0328ad912f81c79292d41ee9eb8824bc12c126ee88f190c0ce396a7fab4f062",
-      "sha256": "fa5d3aa059e2bb9ec86f9e6792ba69a641f04ae018dbad8a03a82abc389c41f9"
+      "digest": "sha256:a4f014aa685cf3912139c4c88ea98ea722bfe83fbd1c336ea7989466cb28cb13",
+      "sha256": "ce99cf9cb18a1cc59d10814ed59cacb2a8d8f03d6d24424a94034291bbb47ee9"
     },
     {
       "name": "clickfunnels-import-external-blog-post",
@@ -70,14 +70,14 @@
     {
       "name": "clickfunnels-page-markup",
       "url": "https://accounts.myclickfunnels.com/.well-known/page-markup/skill.md",
-      "digest": "sha256:beed09981465a34e8b57971dfb02e2490a64bd9d2ee1f7d321c252799a780b37",
-      "sha256": "6ba4505922e2c0857fb33af1d2cbb737bed4a7da6d426bb9ef88927d61092abe"
+      "digest": "sha256:40e914ff1f7acad1496d945a4a791c319adcbb78cc37f67e84a5fc7bef453aa2",
+      "sha256": "d404a62b4257b32de950aa489eef8deeed4edcba49c13acae9a47892ebeb955c"
     },
     {
       "name": "clickfunnels-pages",
       "url": "https://accounts.myclickfunnels.com/.well-known/pages/skill.md",
-      "digest": "sha256:100db933de7f33b39c7c56c934bffa91fcae6020a0deda268a3e218f3fa4d716",
-      "sha256": "f82eae7e94e32e179cce7818132088e9e4bf94e174f74bee69eb230d114ca4c7"
+      "digest": "sha256:440b4b12097de4a4e9e7b47f292b5d77bce983aa0b994cc632932e73ad8a1781",
+      "sha256": "7ae1bfb39966727d409323397b018cf37c47e49ff596761b91bbea32c7f21a44"
     },
     {
       "name": "clickfunnels-products",
@@ -94,14 +94,14 @@
     {
       "name": "clickfunnels-sdk-checkout",
       "url": "https://accounts.myclickfunnels.com/.well-known/sdk/add-checkout/skill.md",
-      "digest": "sha256:651674b96e7048c5a4134ff5b7f8becebdb9d0416793cf2cd8aed131b95aeb06",
-      "sha256": "8f8ebcf304e0d300d9506c8c5d248440d520640d0acdd790e82c1e43dee4cd5d"
+      "digest": "sha256:8af28595356779a2a96e7b09e34b38516ad9051ad95327a62bcd3d3f11785f9e",
+      "sha256": "07734d4937ff6daf21dd5ab0a04fcc800739ef7d2ce4c9ded3051ffe1f7b84e2"
     },
     {
       "name": "clickfunnels-sdk-external-page",
       "url": "https://accounts.myclickfunnels.com/.well-known/sdk/create-external-page/skill.md",
-      "digest": "sha256:cf18efa63d43ff8d4388439bbd6e01cdae6e2be17521ae24ff6730c2ed5172cc",
-      "sha256": "71e2783eb60c562f53db1a378e618bb69ab6b311cc15d7ed81d7147addddb348"
+      "digest": "sha256:910a8385576dedb572a49744114f03f0d6263df864d5a08260daee314b1ced11",
+      "sha256": "33aab926ee6118133c822cbaa445add421e247f84bd88c9072116cff00ab4e68"
     },
     {
       "name": "clickfunnels-sdk-migrate-external-page-domain",
@@ -124,8 +124,8 @@
     {
       "name": "clickfunnels-workflows",
       "url": "https://accounts.myclickfunnels.com/.well-known/workflows/skill.md",
-      "digest": "sha256:020d1eaecb80168285aa25b3e38d2e35a0343b05025f34d7fb5e27daa5fedd77",
-      "sha256": "89b5fe7f18b2edb76d73fcbe20bcd0cbb7889fb76abad3ccc97b311950d3b495"
+      "digest": "sha256:a730c41dbdfb758bc1850f1c9f39efd0a4de9505d22b9d4957a5169b79d3ebc3",
+      "sha256": "e2b605fded3f1972ae19f082ae83d6fd6939accb1f55f892fdb43f8e8ea445f3"
     }
   ]
 }

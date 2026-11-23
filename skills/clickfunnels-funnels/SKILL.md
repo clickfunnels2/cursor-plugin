@@ -472,6 +472,22 @@ can walk directly. Useful for rendering an outline, finding a step, or picking a
 ClickFunnels serves HTML you supplied), and `sdk_token` (the token for either
 SDK-powered page, null for an editor page).
 
+A show-page `page.url` here is the page's own address. For a page created inside
+the funnel it carries a suffix (`/ebook-order--4aa39`) and shows the page outside
+the funnel, so an opt-in there does not move on to the next step. For a page
+ClickFunnels hosts, it is not the link to give visitors: read the page with
+`GET /api/v2/workspaces/:workspace_id/pages?filter[funnel_ids]=<this funnel's id>`
+(an unfiltered read of a page linked into several funnels may show another
+funnel's step) and use its `show_page_step.current_path` on the funnel's
+domain: this funnel's `domain_id` resolved through `GET /api/v2/domains/:id`.
+When `domain_id` is null, the step is on the workspace's default site domain,
+which the page's `url` does not reliably show (a shared page, or a page from
+another site, keeps its own host): take the `domain_id` that
+`GET /api/v2/workspaces/:workspace_id/url_redirects/availability?current_path=/any-path`
+returns with no `domain_id` and read its `name`. An external (SDK) page (`external: true`) has a null
+step path; its `url` is the external address and is the visitor link (see the
+[Pages skill](https://accounts.myclickfunnels.com/.well-known/pages/skill.md#saving-live-page-content)).
+
 ! **FORBIDDEN - a funnel step's path is its own standalone slug, never the funnel
 path + the step slug.** The `url` returned per step is composed **automatically**
 by ClickFunnels from the funnel/step hierarchy - do not reconstruct or guess it.
